@@ -1,50 +1,50 @@
 # To run this code you need to install the following dependencies:
-# pip install google-genai python-dotenv
+# pip install google-genai python-dotenv streamlit
 
 import os
+import streamlit as st
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
-def generate(user_input: str = None):
+def get_api_key():
     """
-    Generate status updates using Gemini API.
+    Retrieve API key from multiple sources:
+    1. Streamlit secrets (for Streamlit Cloud)
+    2. Environment variables (for local development)
+    """
+    # Check Streamlit secrets first (for Streamlit Cloud deployment)
+    if "GEMINI_API_KEY" in st.secrets:
+        return st.secrets["GEMINI_API_KEY"]
     
-    Args:
-        user_input: The raw status input from the user. If None, prompts for input.
-    """
-    # Get API key from environment variable
+    # Fall back to environment variables (for local development with .env)
     api_key = os.environ.get("GEMINI_API_KEY")
     
     if not api_key:
-        raise ValueError(
-            "GEMINI_API_KEY not found in environment variables. "
-            "Please set it in your .env file or as an environment variable."
+        st.error("🔑 API Configuration Error: GEMINI_API_KEY not found.")
+        st.info(
+            "Please configure GEMINI_API_KEY:\n\n"
+            "**For Streamlit Cloud:** Add it to Settings → Secrets\n\n"
+            "**For Local Development:** Create a `.env` file with `GEMINI_API_KEY=your_key`"
         )
+        st.stop()
     
-    client = genai.Client(api_key=api_key)
+    return api_key
 
-    model = "gemini-2.0-flash"
+def generate_status_update(user_input: str):
+    """
+    Generate professional status updates using Gemini API.
     
-    # If no input provided, get it from user
-    if user_input is None:
-        print("\n" + "="*60)
-        print("PrashantStatus - Status Consolidation Assistant")
-        print("="*60)
-        print("\nPaste your status updates below (press Enter twice when done):\n")
-        
-        lines = []
-        while True:
-            line = input()
-            if line:
-                lines.append(line)
-            else:
-                if lines:
-                    break
-        user_input = "\n".join(lines)
+    Args:
+        user_input: The raw status input from the user
+    """
+    api_key = get_api_key()
+    client = genai.Client(api_key=api_key)
+    
+    model = "gemini-2.0-flash"
     
     contents = [
         types.Content(
@@ -447,20 +447,127 @@ NEVER generate:
 The assistant must intelligently generate polished status updates directly from raw task inputs."""),
         ],
     )
-
-    print("\n" + "="*60)
-    print("Generated Status Update")
-    print("="*60 + "\n")
-
+    
+    # Stream the response
+    response_placeholder = st.empty()
+    full_response = ""
+    
     for chunk in client.models.generate_content_stream(
         model=model,
         contents=contents,
         config=generate_content_config,
     ):
         if text := chunk.text:
-            print(text, end="", flush=True)
+            full_response += text
+            response_placeholder.markdown(full_response)
+    
+    return full_response
 
-    print("\n\n" + "="*60 + "\n")
+def main():
+    """Main Streamlit application."""
+    st.set_page_config(
+        page_title="PrashantStatus",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # Custom styling
+    st.markdown("""
+        <style>
+        .main-header {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #0066cc;
+            margin-bottom: 0.5rem;
+        }
+        .sub-header {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 2rem;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # Header
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown('<div class="main-header">📊 PrashantStatus</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-header">Status Consolidation Dashboard</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("*Powered by Gemini AI*")
+    
+    st.divider()
+    
+    # Sidebar
+    with st.sidebar:
+        st.header("Instructions")
+        st.markdown("""
+        ### How to use:
+        
+        1. **Enter your team's status updates** in the text area
+        2. Click **"Generate Status Update"**
+        3. Get three formats:
+           - 🗣️ Standup Narrative
+           - 💬 Chat Update
+           - 📧 Email Format
+        
+        ### Input Format:
+        ```
+        Person Name:
+        - Task 1
+        - Task 2
+        - Blockers/issues
+        
+        Person Name:
+        - Task 1
+        - Task 2
+        ```
+        """)
+        
+        st.divider()
+        st.markdown("**About**")
+        st.markdown("Convert raw status updates into professional formats instantly.")
+    
+    # Main content
+    st.subheader("📝 Enter Your Status Updates")
+    
+    status_input = st.text_area(
+        label="Paste your team's raw status updates below:",
+        placeholder="""Example:
+Pranay:
+- Working on masking features
+- Issue fixing
+- Database optimization
+
+Devyanshi:
+- Share Certificate issues resolutions
+- Test cases writing
+
+RamSagar:
+- Defect fixing""",
+        height=250,
+        key="status_input"
+    )
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col2:
+        if st.button("🚀 Generate Status Update", use_container_width=True, type="primary"):
+            if not status_input.strip():
+                st.error("Please enter your status updates first!")
+            else:
+                with st.spinner("✨ Generating professional status updates..."):
+                    try:
+                        generate_status_update(status_input)
+                        st.success("✅ Status update generated successfully!")
+                    except Exception as e:
+                        st.error(f"❌ Error generating status: {str(e)}")
+    
+    with col3:
+        if st.button("🗑️ Clear", use_container_width=True):
+            st.rerun()
 
 if __name__ == "__main__":
-    generate()
+    main()
