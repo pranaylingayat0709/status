@@ -1,29 +1,64 @@
 # To run this code you need to install the following dependencies:
-# pip install google-genai
+# pip install google-genai python-dotenv
 
 import os
 from google import genai
 from google.genai import types
+from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv()
 
-def generate():
-    client = genai.Client(
-        api_key=os.environ.get("GEMINI_API_KEY"),
-    )
+def generate(user_input: str = None):
+    """
+    Generate status updates using Gemini API.
+    
+    Args:
+        user_input: The raw status input from the user. If None, prompts for input.
+    """
+    # Get API key from environment variable
+    api_key = os.environ.get("GEMINI_API_KEY")
+    
+    if not api_key:
+        raise ValueError(
+            "GEMINI_API_KEY not found in environment variables. "
+            "Please set it in your .env file or as an environment variable."
+        )
+    
+    client = genai.Client(api_key=api_key)
 
-    model = "gemini-3.1-pro-preview"
+    model = "gemini-2.0-flash"
+    
+    # If no input provided, get it from user
+    if user_input is None:
+        print("\n" + "="*60)
+        print("PrashantStatus - Status Consolidation Assistant")
+        print("="*60)
+        print("\nPaste your status updates below (press Enter twice when done):\n")
+        
+        lines = []
+        while True:
+            line = input()
+            if line:
+                lines.append(line)
+            else:
+                if lines:
+                    break
+        user_input = "\n".join(lines)
+    
     contents = [
         types.Content(
             role="user",
             parts=[
-                types.Part.from_text(text="""INSERT_INPUT_HERE"""),
+                types.Part.from_text(text=user_input),
             ],
         ),
     ]
+    
     tools = [
-        types.Tool(googleSearch=types.GoogleSearch(
-        )),
+        types.Tool(googleSearch=types.GoogleSearch()),
     ]
+    
     generate_content_config = types.GenerateContentConfig(
         thinking_config=types.ThinkingConfig(
             thinking_level="HIGH",
@@ -413,13 +448,19 @@ The assistant must intelligently generate polished status updates directly from 
         ],
     )
 
+    print("\n" + "="*60)
+    print("Generated Status Update")
+    print("="*60 + "\n")
+
     for chunk in client.models.generate_content_stream(
         model=model,
         contents=contents,
         config=generate_content_config,
     ):
         if text := chunk.text:
-            print(text, end="")
+            print(text, end="", flush=True)
+
+    print("\n\n" + "="*60 + "\n")
 
 if __name__ == "__main__":
     generate()
