@@ -1,17 +1,62 @@
-# ---------------------------------------------------
-# REPLACE ONLY THE CSS + HERO SECTION WITH THIS
-# THIS MATCHES THE UI FROM THE IMAGE
-# ---------------------------------------------------
+import streamlit as st
+from google import genai
+from google.genai import types
 
 # ---------------------------------------------------
-# MODERN CSS
+# PAGE CONFIG
+# ---------------------------------------------------
+
+st.set_page_config(
+    page_title="PrashantStatus",
+    page_icon="✨",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# ---------------------------------------------------
+# API KEY CHECK
+# ---------------------------------------------------
+
+if "GEMINI_API_KEY" not in st.secrets:
+    st.error("🔑 GEMINI_API_KEY not found in Streamlit secrets.")
+    st.stop()
+
+# ---------------------------------------------------
+# GEMINI CLIENT
+# ---------------------------------------------------
+
+client = genai.Client(
+    api_key=st.secrets["GEMINI_API_KEY"]
+)
+
+# ---------------------------------------------------
+# SYSTEM PROMPT
+# ---------------------------------------------------
+
+SYSTEM_INSTRUCTIONS = """
+You are PrashantStatus.
+
+Generate:
+1. Standup Narrative
+2. Chat Update
+3. Daily Status Email
+
+Keep responses:
+- Professional
+- Concise
+- Well formatted
+- Human sounding
+"""
+
+# ---------------------------------------------------
+# CUSTOM CSS
 # ---------------------------------------------------
 
 st.markdown("""
 <style>
 
 /* ------------------------------------------------ */
-/* GOOGLE FONT */
+/* IMPORT FONT */
 /* ------------------------------------------------ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -20,22 +65,22 @@ st.markdown("""
 /* GLOBAL */
 /* ------------------------------------------------ */
 
-html, body, [class*="css"]  {
+html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
 }
 
 .stApp {
 
     background:
-        radial-gradient(circle at top left, #edf4ff 0%, transparent 22%),
-        radial-gradient(circle at bottom right, #edf7ff 0%, transparent 22%),
+        radial-gradient(circle at top left, #edf4ff 0%, transparent 25%),
+        radial-gradient(circle at bottom right, #eef9ff 0%, transparent 25%),
         linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
 
     min-height: 100vh;
 }
 
 /* ------------------------------------------------ */
-/* MAIN CONTAINER */
+/* MAIN WIDTH */
 /* ------------------------------------------------ */
 
 .main .block-container {
@@ -44,7 +89,7 @@ html, body, [class*="css"]  {
 
     padding-top: 1rem;
 
-    padding-bottom: 3rem;
+    padding-bottom: 4rem;
 }
 
 /* ------------------------------------------------ */
@@ -58,36 +103,32 @@ header {
 }
 
 /* ------------------------------------------------ */
-/* HERO */
+/* HERO SECTION */
 /* ------------------------------------------------ */
 
 .hero-section {
 
     text-align: center;
 
-    margin-bottom: 2rem;
+    margin-bottom: 2.5rem;
 }
 
 /* ------------------------------------------------ */
-/* HERO ILLUSTRATION */
+/* HERO IMAGE */
 /* ------------------------------------------------ */
 
 .hero-top-image {
 
-    width: 120px;
+    width: 110px;
 
     margin: auto;
 
-    margin-bottom: 0.8rem;
+    margin-bottom: 1rem;
 }
 
 .hero-top-image img {
 
     width: 100%;
-
-    border-radius: 0px !important;
-
-    box-shadow: none !important;
 }
 
 /* ------------------------------------------------ */
@@ -120,7 +161,7 @@ header {
 
     color: #5b6477;
 
-    font-size: 1.15rem;
+    font-size: 1.1rem;
 
     max-width: 700px;
 
@@ -132,51 +173,55 @@ header {
 }
 
 /* ------------------------------------------------ */
-/* TEAM CARD */
+/* CARD */
 /* ------------------------------------------------ */
 
-.team-card {
+.custom-card {
 
-    background: rgba(255,255,255,0.65);
+    background: rgba(255,255,255,0.75);
 
-    border: 1px solid #cfe0ff;
-
-    border-radius: 26px;
+    border-radius: 28px;
 
     padding: 2rem;
 
+    border: 1px solid rgba(207,224,255,0.8);
+
     box-shadow:
-        0 10px 30px rgba(37,99,235,0.05);
+        0 10px 30px rgba(15,23,42,0.05);
 
-    margin-bottom: 1.8rem;
+    margin-bottom: 2rem;
 
-    position: relative;
-
-    overflow: hidden;
+    backdrop-filter: blur(10px);
 }
 
 /* ------------------------------------------------ */
 /* GREEN CARD */
 /* ------------------------------------------------ */
 
-.update-card {
+.green-card {
 
-    background: rgba(240,255,248,0.72);
+    background: rgba(240,255,248,0.78);
 
-    border: 1px solid #cceedd;
+    border: 1px solid #d7f5e5;
+}
 
-    border-radius: 26px;
+/* ------------------------------------------------ */
+/* CARD HEADER */
+/* ------------------------------------------------ */
 
-    padding: 2rem;
+.card-header {
 
-    box-shadow:
-        0 10px 30px rgba(15,23,42,0.04);
+    display: flex;
 
-    margin-bottom: 2rem;
+    justify-content: space-between;
 
-    position: relative;
+    align-items: center;
 
-    overflow: hidden;
+    gap: 20px;
+
+    flex-wrap: wrap;
+
+    margin-bottom: 1.5rem;
 }
 
 /* ------------------------------------------------ */
@@ -189,28 +234,7 @@ header {
 
     align-items: center;
 
-    gap: 14px;
-
-    font-size: 1.7rem;
-
-    font-weight: 700;
-
-    color: #0f172a;
-
-    margin-bottom: 0.5rem;
-}
-
-/* ------------------------------------------------ */
-/* CARD DESCRIPTION */
-/* ------------------------------------------------ */
-
-.card-description {
-
-    color: #5b6477;
-
-    font-size: 1rem;
-
-    margin-bottom: 1.5rem;
+    gap: 16px;
 }
 
 /* ------------------------------------------------ */
@@ -231,9 +255,7 @@ header {
 
     justify-content: center;
 
-    font-size: 1.7rem;
-
-    flex-shrink: 0;
+    font-size: 1.6rem;
 }
 
 .blue-icon {
@@ -247,7 +269,40 @@ header {
 }
 
 /* ------------------------------------------------ */
-/* INPUTS */
+/* TEXT */
+/* ------------------------------------------------ */
+
+.title-text {
+
+    font-size: 1.6rem;
+
+    font-weight: 700;
+
+    color: #0f172a;
+}
+
+.desc-text {
+
+    color: #5b6477;
+
+    font-size: 1rem;
+
+    margin-top: 0.2rem;
+}
+
+/* ------------------------------------------------ */
+/* SIDE EMOJI */
+/* ------------------------------------------------ */
+
+.side-emoji {
+
+    font-size: 75px;
+
+    opacity: 0.9;
+}
+
+/* ------------------------------------------------ */
+/* INPUT */
 /* ------------------------------------------------ */
 
 .stNumberInput input,
@@ -255,15 +310,15 @@ header {
 
     background: rgba(255,255,255,0.95) !important;
 
-    border: 2px solid #d6e5ff !important;
+    border: 2px solid #dbeafe !important;
 
     border-radius: 18px !important;
 
     color: #0f172a !important;
 
-    font-size: 1rem !important;
-
     padding: 1rem !important;
+
+    font-size: 1rem !important;
 
     box-shadow: none !important;
 }
@@ -274,7 +329,7 @@ header {
 
 .stTextArea textarea {
 
-    min-height: 250px !important;
+    min-height: 260px !important;
 
     line-height: 1.8 !important;
 }
@@ -304,14 +359,14 @@ header {
 
     font-weight: 700 !important;
 
-    box-shadow:
-        0 10px 30px rgba(59,92,255,0.25);
-
-    transition: all 0.3s ease !important;
-
     display: block;
 
     margin: auto;
+
+    box-shadow:
+        0 12px 30px rgba(59,92,255,0.25);
+
+    transition: all 0.3s ease !important;
 }
 
 .stButton > button:hover {
@@ -319,7 +374,7 @@ header {
     transform: translateY(-2px);
 
     box-shadow:
-        0 16px 35px rgba(59,92,255,0.35);
+        0 18px 35px rgba(59,92,255,0.35);
 }
 
 /* ------------------------------------------------ */
@@ -328,16 +383,31 @@ header {
 
 .output-card {
 
-    background: rgba(255,255,255,0.85);
+    background: rgba(255,255,255,0.88);
 
-    border-radius: 24px;
+    border-radius: 28px;
 
     padding: 2rem;
 
     box-shadow:
-        0 15px 35px rgba(15,23,42,0.06);
+        0 15px 40px rgba(15,23,42,0.08);
 
     margin-top: 2rem;
+}
+
+/* ------------------------------------------------ */
+/* CODE BLOCK */
+/* ------------------------------------------------ */
+
+pre {
+
+    border-radius: 18px !important;
+
+    background: #eff6ff !important;
+
+    border: 1px solid #dbeafe !important;
+
+    padding: 1rem !important;
 }
 
 /* ------------------------------------------------ */
@@ -350,12 +420,16 @@ header {
         font-size: 2.5rem;
     }
 
-    .card-title {
-        font-size: 1.3rem;
+    .title-text {
+        font-size: 1.2rem;
     }
 
     .hero-top-image {
-        width: 85px;
+        width: 80px;
+    }
+
+    .side-emoji {
+        font-size: 55px;
     }
 }
 
@@ -363,14 +437,14 @@ header {
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------
-# HERO
+# HERO SECTION
 # ---------------------------------------------------
 
 st.markdown("""
 <div class="hero-section">
 """, unsafe_allow_html=True)
 
-# SMALL TOP ILLUSTRATION
+# HERO IMAGE
 
 st.markdown("""
 <div class="hero-top-image">
@@ -391,22 +465,20 @@ st.markdown("""
 st.markdown("""
 <div class="main-subtitle">
 Professional Standup Narratives, Chat Updates & Daily Status Emails,
-beautifully consolidated.
+beautifully consolidated into one elegant workspace.
 </div>
 """, unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------
-# TEAM CARD
+# TEAM CONFIGURATION CARD
 # ---------------------------------------------------
 
 st.markdown("""
-<div class="team-card">
+<div class="custom-card">
 
-<div style="display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap;">
-
-<div style="flex:1; min-width:300px;">
+<div class="card-header">
 
 <div class="card-title">
 
@@ -415,19 +487,16 @@ st.markdown("""
 </div>
 
 <div>
-Team Configuration
-</div>
-
-</div>
-
-<div class="card-description">
+<div class="title-text">Team Configuration</div>
+<div class="desc-text">
 Set the total number of active team members today.
 </div>
+</div>
 
 </div>
 
-<div style="font-size:70px; opacity:0.85;">
-👨‍💻👩‍💻👨‍💻
+<div class="side-emoji">
+👨‍💻👩‍💻
 </div>
 
 </div>
@@ -443,15 +512,13 @@ people_count = st.number_input(
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------
-# UPDATE CARD
+# RAW TEAM UPDATES CARD
 # ---------------------------------------------------
 
 st.markdown("""
-<div class="update-card">
+<div class="custom-card green-card">
 
-<div style="display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap;">
-
-<div style="flex:1; min-width:300px;">
+<div class="card-header">
 
 <div class="card-title">
 
@@ -460,18 +527,15 @@ st.markdown("""
 </div>
 
 <div>
-Raw Team Updates
-</div>
-
-</div>
-
-<div class="card-description">
+<div class="title-text">Raw Team Updates</div>
+<div class="desc-text">
 Paste the raw updates from your team below.
 </div>
+</div>
 
 </div>
 
-<div style="font-size:75px; opacity:0.85;">
+<div class="side-emoji">
 📋
 </div>
 
@@ -480,15 +544,16 @@ Paste the raw updates from your team below.
 
 raw_updates = st.text_area(
     "Paste team updates below:",
-    placeholder="""Example:
-
-Pranay:
+    placeholder="""Pranay:
 - Working on masking enhancements.
 - Resolving backend issues.
 
 Devyanshi:
 - Preparing test cases.
 - Resolving share certificate issues.
+
+RamSagar:
+- Fixing reported defects.
 """
 )
 
@@ -499,3 +564,65 @@ st.markdown("</div>", unsafe_allow_html=True)
 # ---------------------------------------------------
 
 generate = st.button("✨ Generate Professional Status")
+
+# ---------------------------------------------------
+# GENERATE OUTPUT
+# ---------------------------------------------------
+
+if generate:
+
+    if not raw_updates.strip():
+
+        st.warning("⚠️ Please provide raw updates before generating.")
+
+    else:
+
+        with st.spinner("✨ Generating professional status updates..."):
+
+            try:
+
+                prompt_payload = f"""
+Team Members: {people_count}
+
+Updates:
+{raw_updates}
+"""
+
+                contents = [
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(
+                                text=prompt_payload
+                            )
+                        ]
+                    )
+                ]
+
+                config = types.GenerateContentConfig(
+                    system_instruction=[
+                        types.Part.from_text(
+                            text=SYSTEM_INSTRUCTIONS
+                        )
+                    ]
+                )
+
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=contents,
+                    config=config
+                )
+
+                st.markdown("""
+                <div class="output-card">
+                """, unsafe_allow_html=True)
+
+                st.markdown("## 📋 Generated Status Dashboard")
+
+                st.markdown(response.text)
+
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            except Exception as e:
+
+                st.error(f"❌ Error generating response: {e}")
