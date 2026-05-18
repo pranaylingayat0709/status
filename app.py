@@ -1,17 +1,62 @@
 # ---------------------------------------------------
-# REPLACE YOUR ENTIRE HERO + INPUT UI SECTION
-# WITH THIS CLEAN MODERN VERSION
+# IMPORTS (YOU MISSED THIS)
 # ---------------------------------------------------
 
+import streamlit as st
+from google import genai
+from google.genai import types
+
 # ---------------------------------------------------
-# MODERN CSS
+# PAGE CONFIG
+# ---------------------------------------------------
+
+st.set_page_config(
+    page_title="PrashantStatus",
+    page_icon="✨",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# ---------------------------------------------------
+# API KEY CHECK
+# ---------------------------------------------------
+
+if "GEMINI_API_KEY" not in st.secrets:
+    st.error("🔑 GEMINI_API_KEY not found in Streamlit secrets.")
+    st.stop()
+
+# ---------------------------------------------------
+# GEMINI CLIENT
+# ---------------------------------------------------
+
+client = genai.Client(
+    api_key=st.secrets["GEMINI_API_KEY"]
+)
+
+# ---------------------------------------------------
+# SYSTEM PROMPT
+# ---------------------------------------------------
+
+SYSTEM_INSTRUCTIONS = """
+You are PrashantStatus.
+
+Generate:
+1. Standup Narrative
+2. Chat Update
+3. Daily Status Email
+
+Keep responses professional and concise.
+"""
+
+# ---------------------------------------------------
+# CSS
 # ---------------------------------------------------
 
 st.markdown("""
 <style>
 
 /* -------------------- */
-/* GLOBAL BACKGROUND */
+/* GLOBAL */
 /* -------------------- */
 
 .stApp {
@@ -19,18 +64,18 @@ st.markdown("""
         135deg,
         #f8fbff 0%,
         #edf4ff 50%,
-        #e0ecff 100%
+        #e4efff 100%
     );
     font-family: 'Inter', sans-serif;
 }
 
 /* -------------------- */
-/* MAIN CONTAINER */
+/* MAIN WIDTH */
 /* -------------------- */
 
 .main .block-container {
-    max-width: 1000px;
-    padding-top: 1rem;
+    max-width: 980px;
+    padding-top: 1.2rem;
     padding-bottom: 3rem;
 }
 
@@ -45,7 +90,7 @@ header {
 }
 
 /* -------------------- */
-/* HERO SECTION */
+/* HERO */
 /* -------------------- */
 
 .hero-section {
@@ -54,15 +99,21 @@ header {
 }
 
 /* -------------------- */
-/* SMALL HERO IMAGE */
+/* IMAGE */
 /* -------------------- */
 
 .hero-image img {
+
     width: 100%;
-    max-height: 240px !important;
+
+    max-height: 220px !important;
+
     object-fit: cover;
-    border-radius: 28px;
-    box-shadow: 0 12px 30px rgba(37,99,235,0.12);
+
+    border-radius: 24px;
+
+    box-shadow:
+        0 10px 25px rgba(37,99,235,0.12);
 }
 
 /* -------------------- */
@@ -70,12 +121,16 @@ header {
 /* -------------------- */
 
 .main-title {
-    font-size: 3.4rem;
+
+    font-size: 3.3rem;
+
     font-weight: 800;
+
     color: #0f172a;
-    margin-top: 1.4rem;
-    margin-bottom: 0.4rem;
-    letter-spacing: -1.5px;
+
+    margin-top: 1.2rem;
+
+    margin-bottom: 0.3rem;
 }
 
 /* -------------------- */
@@ -83,9 +138,12 @@ header {
 /* -------------------- */
 
 .main-subtitle {
-    font-size: 1.05rem;
+
     color: #475569;
-    margin-bottom: 2.5rem;
+
+    font-size: 1.05rem;
+
+    margin-bottom: 2.2rem;
 }
 
 /* -------------------- */
@@ -93,40 +151,58 @@ header {
 /* -------------------- */
 
 .modern-card {
-    background: rgba(255,255,255,0.82);
-    backdrop-filter: blur(10px);
 
-    border-radius: 24px;
+    background: rgba(255,255,255,0.82);
+
+    border-radius: 22px;
 
     padding: 1.5rem;
 
-    border: 1px solid rgba(255,255,255,0.7);
+    border: 1px solid #dbeafe;
 
     box-shadow:
-        0 10px 25px rgba(15,23,42,0.06);
+        0 10px 25px rgba(15,23,42,0.05);
 
     margin-bottom: 1.5rem;
 }
 
 /* -------------------- */
-/* SECTION TITLE */
+/* CARD HEADINGS */
 /* -------------------- */
 
 .section-title {
-    font-size: 1.25rem;
+
+    font-size: 1.2rem;
+
     font-weight: 700;
+
     color: #0f172a;
+
     margin-bottom: 1rem;
 }
 
 /* -------------------- */
-/* INPUT BOXES */
+/* NUMBER INPUT */
 /* -------------------- */
 
-.stTextArea textarea,
 .stNumberInput input {
 
-    background: #ffffff !important;
+    background: white !important;
+
+    border: 2px solid #dbeafe !important;
+
+    border-radius: 16px !important;
+
+    color: #0f172a !important;
+}
+
+/* -------------------- */
+/* TEXT AREA */
+/* -------------------- */
+
+.stTextArea textarea {
+
+    background: white !important;
 
     border: 2px solid #dbeafe !important;
 
@@ -136,17 +212,8 @@ header {
 
     padding: 1rem !important;
 
-    font-size: 1rem !important;
-
-    box-shadow: none !important;
-}
-
-/* -------------------- */
-/* TEXT AREA HEIGHT */
-/* -------------------- */
-
-.stTextArea textarea {
     min-height: 240px !important;
+
     line-height: 1.7 !important;
 }
 
@@ -174,13 +241,14 @@ header {
 
     font-weight: 700 !important;
 
+    display: block;
+
+    margin: auto;
+
     box-shadow:
-        0 10px 20px rgba(37,99,235,0.18);
+        0 10px 25px rgba(37,99,235,0.2);
 
     transition: all 0.3s ease !important;
-
-    display: block;
-    margin: auto;
 }
 
 .stButton > button:hover {
@@ -188,7 +256,7 @@ header {
     transform: translateY(-2px);
 
     box-shadow:
-        0 15px 30px rgba(37,99,235,0.28);
+        0 15px 35px rgba(37,99,235,0.28);
 }
 
 /* -------------------- */
@@ -199,28 +267,28 @@ header {
 
     background: rgba(255,255,255,0.9);
 
-    border-radius: 24px;
+    border-radius: 22px;
 
     padding: 2rem;
 
     margin-top: 2rem;
 
     box-shadow:
-        0 15px 40px rgba(15,23,42,0.08);
+        0 15px 35px rgba(15,23,42,0.08);
 }
 
 /* -------------------- */
-/* RESPONSIVE */
+/* MOBILE */
 /* -------------------- */
 
 @media (max-width: 768px) {
 
     .main-title {
-        font-size: 2.3rem;
+        font-size: 2.2rem;
     }
 
     .hero-image img {
-        max-height: 180px !important;
+        max-height: 170px !important;
     }
 }
 
@@ -235,7 +303,8 @@ st.markdown("""
 <div class="hero-section">
 """, unsafe_allow_html=True)
 
-# SMALLER IMAGE
+# SMALL IMAGE
+
 st.markdown('<div class="hero-image">', unsafe_allow_html=True)
 
 st.image(
@@ -246,6 +315,7 @@ st.image(
 st.markdown("</div>", unsafe_allow_html=True)
 
 # TITLE
+
 st.markdown("""
 <div class="main-title">
 ✨ PrashantStatus
@@ -253,6 +323,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # SUBTITLE
+
 st.markdown("""
 <div class="main-subtitle">
 Professional Standup Narratives, Chat Updates & Daily Status Emails beautifully consolidated into one elegant workspace.
@@ -262,7 +333,7 @@ Professional Standup Narratives, Chat Updates & Daily Status Emails beautifully 
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------
-# TEAM CONFIGURATION CARD
+# TEAM CONFIG CARD
 # ---------------------------------------------------
 
 st.markdown("""
@@ -322,50 +393,57 @@ generate = st.button("✨ Generate Professional Status")
 if generate:
 
     if not raw_updates.strip():
-        st.warning("⚠️ Please provide raw updates before continuing.")
-        st.stop()
 
-    with st.spinner("✨ Generating beautifully structured status updates..."):
+        st.warning("⚠️ Please provide raw updates.")
 
-        try:
+    else:
 
-            prompt_payload = f"""
-Total Team Members: {people_count}
+        with st.spinner("✨ Generating status updates..."):
+
+            try:
+
+                prompt_payload = f"""
+Team Members: {people_count}
 
 Updates:
 {raw_updates}
 """
 
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=prompt_payload)
+                contents = [
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(
+                                text=prompt_payload
+                            )
+                        ]
+                    )
+                ]
+
+                config = types.GenerateContentConfig(
+                    system_instruction=[
+                        types.Part.from_text(
+                            text=SYSTEM_INSTRUCTIONS
+                        )
                     ]
                 )
-            ]
 
-            config = types.GenerateContentConfig(
-                system_instruction=[
-                    types.Part.from_text(text=SYSTEM_INSTRUCTIONS)
-                ]
-            )
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=contents,
+                    config=config
+                )
 
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=config
-            )
+                st.markdown("""
+                <div class="output-card">
+                """, unsafe_allow_html=True)
 
-            st.markdown("""
-            <div class="output-card">
-            """, unsafe_allow_html=True)
+                st.markdown("## 📋 Generated Status Dashboard")
 
-            st.markdown("## 📋 Generated Status Dashboard")
+                st.markdown(response.text)
 
-            st.markdown(response.text)
+                st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown("</div>", unsafe_allow_html=True)
+            except Exception as e:
 
-        except Exception as e:
-            st.error(f"❌ Error generating status: {e}")
+                st.error(f"❌ Error: {e}")
