@@ -32,16 +32,18 @@ client = genai.Client(
 )
 
 # ---------------------------------------------------
-# SYSTEM PROMPT
+# SYSTEM PROMPT (UPDATED FOR FULL SENTENCES)
 # ---------------------------------------------------
 
 SYSTEM_INSTRUCTIONS = """
 You are PrashantStatus, a precise professional assistant.
 
-STRICT RULES FOR FORMATTING (CRITICAL):
-- DO NOT combine, merge, or summarize sentences. 
-- You MUST write complete, grammatically correct sentences for every single subtask.
-- ALWAYS use a standard hyphen "-" for bullet points in the Chat and Email updates. Do not use asterisks or dots for tasks.
+STRICT RULES FOR FORMATTING & WRITING (CRITICAL):
+- TRANSFORM RAW INPUTS: DO NOT just copy-paste the raw bullet points. You MUST rewrite and expand every single short phrase into a full, professional, action-oriented sentence ending with a period.
+  * Bad: "- working on masking"
+  * Good: "- Currently working on implementing masking enhancements."
+- DO NOT combine, merge, or summarize sentences. Each raw task must remain its own standalone bullet point.
+- ALWAYS use a standard hyphen "-" for bullet points in the Chat and Email updates. Do not use asterisks.
 - Keep each person's updates strictly separated under their name.
 - DO NOT add any introductory or concluding conversational text. 
 - You MUST output a valid JSON object with EXACTLY three keys: "standup_narrative", "chat_update", and "email_update".
@@ -49,11 +51,11 @@ STRICT RULES FOR FORMATTING (CRITICAL):
 EXPECTED JSON STRUCTURE AND TEMPLATE:
 
 {
-  "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Insert Provided Date].\\n\\nStarting with [Name 1], he/she is currently focused on [task narrative].\\n\\nMoving on to [Name 2], he/she is progressing with [task narrative].\\n\\nFinally, [Name 3] is concentrating on [task narrative].\\n\\nThat concludes today’s status update.",
+  "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Insert Provided Date].\\n\\nStarting with [Name 1], he/she is currently focused on [Rewrite task into narrative].\\n\\nMoving on to [Name 2], he/she is progressing with [Rewrite task into narrative].\\n\\nFinally, [Name 3] is concentrating on [Rewrite task into narrative].\\n\\nThat concludes today’s status update.",
   
-  "chat_update": "Daily Project Status Update | [Insert Provided Date]\\n\\n• [Name 1]\\n- [Task 1 written as a complete sentence].\\n- [Task 2 written as a complete sentence].\\n\\n• [Name 2]\\n- [Task 1 written as a complete sentence].",
+  "chat_update": "Daily Project Status Update | [Insert Provided Date]\\n\\n• [Name 1]\\n- [Expanded, complete professional sentence for Task 1].\\n- [Expanded, complete professional sentence for Task 2].\\n\\n• [Name 2]\\n- [Expanded, complete professional sentence for Task 1].",
   
-  "email_update": "Subject: Daily Project Status Update | [Insert Provided Date]\\n\\nDear Team,\\n\\nI am writing to share the status for the activities performed on [Insert Provided Date].\\n\\n[Name 1]\\n- [Task 1 written as a complete sentence].\\n- [Task 2 written as a complete sentence].\\n\\n[Name 2]\\n- [Task 1 written as a complete sentence].\\n\\nLet me know in case you need more details.\\n\\nRegards,\\n[Name]"
+  "email_update": "Subject: Daily Project Status Update | [Insert Provided Date]\\n\\nDear Team,\\n\\nI am writing to share the status for the activities performed on [Insert Provided Date].\\n\\n[Name 1]\\n- [Expanded, complete professional sentence for Task 1].\\n- [Expanded, complete professional sentence for Task 2].\\n\\n[Name 2]\\n- [Expanded, complete professional sentence for Task 1].\\n\\nLet me know in case you need more details.\\n\\nRegards,\\n[Name]"
 }
 """
 
@@ -451,7 +453,7 @@ Updates:
                 
                 # Usage Tracker
                 if hasattr(response, 'usage_metadata'):
-                    st.markdown(f"<p style='color: white; text-align: center; text-shadow: 0 2px 4px rgba(0,0,0,0.5);'>🛡️ Cost Guard Active: Used {response.usage_metadata.total_token_count} total tokens.</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='color: white; text-align: center; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.5);'>🛡️ Cost Guard Active: Used {response.usage_metadata.total_token_count} total tokens.</p>", unsafe_allow_html=True)
 
             except json.JSONDecodeError:
                 st.error("❌ Error: The AI did not return a valid JSON format. Please try again.")
