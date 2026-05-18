@@ -58,31 +58,37 @@ EXPECTED JSON STRUCTURE AND TEMPLATE:
 """
 
 # ---------------------------------------------------
-# CUSTOM CSS (LIGHT & PLEASANT THEME)
+# CUSTOM CSS (VIBRANT AURORA THEME)
 # ---------------------------------------------------
 
 st.markdown("""
 <style>
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
-    color: #334155;
 }
 
-/* Beautiful Soft Pastel Mesh Background */
+/* ------------------------------------------------ */
+/* ANIMATED VIBRANT BACKGROUND */
+/* ------------------------------------------------ */
+
+@keyframes gradientBG {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
 .stApp {
-    background-color: #f8fafc;
-    background-image: 
-        radial-gradient(at 10% 10%, hsla(228,100%,74%,0.15) 0px, transparent 50%),
-        radial-gradient(at 90% 10%, hsla(189,100%,56%,0.15) 0px, transparent 50%),
-        radial-gradient(at 50% 90%, hsla(355,100%,93%,0.2) 0px, transparent 50%);
+    background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+    background-size: 400% 400%;
+    animation: gradientBG 15s ease infinite;
     min-height: 100vh;
 }
 
 .main .block-container {
-    max-width: 1000px; /* Slightly narrower for a more elegant read */
+    max-width: 1000px;
     padding-top: 2rem;
     padding-bottom: 4rem;
 }
@@ -91,17 +97,20 @@ html, body, [class*="css"] {
     visibility: hidden;
 }
 
-/* Hero Section */
+/* ------------------------------------------------ */
+/* HERO SECTION (WHITE TEXT TO POP ON GRADIENT) */
+/* ------------------------------------------------ */
+
 .hero-section {
     text-align: center;
-    margin-bottom: 3rem;
+    margin-bottom: 3.5rem;
 }
 
 .hero-top-image {
-    width: 100px;
+    width: 110px;
     margin: auto;
     margin-bottom: 1.5rem;
-    filter: drop-shadow(0 10px 15px rgba(0,0,0,0.05));
+    filter: drop-shadow(0 15px 20px rgba(0,0,0,0.2));
 }
 
 .hero-top-image img {
@@ -109,36 +118,40 @@ html, body, [class*="css"] {
 }
 
 .main-title {
-    font-size: 3.5rem;
-    font-weight: 800;
-    color: #0f172a;
+    font-size: 4rem;
+    font-weight: 900;
+    color: #ffffff !important;
     letter-spacing: -1.5px;
     margin-bottom: 0.5rem;
+    text-shadow: 0 10px 20px rgba(0,0,0,0.15);
 }
 
 .main-title span {
-    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #ffde59 !important; /* Bright Yellow/Gold */
 }
 
 .main-subtitle {
-    color: #64748b;
-    font-size: 1.15rem;
-    max-width: 600px;
+    color: rgba(255, 255, 255, 0.95) !important;
+    font-size: 1.25rem;
+    font-weight: 600;
+    max-width: 650px;
     margin: auto;
     line-height: 1.6;
+    text-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 
-/* Cards */
+/* ------------------------------------------------ */
+/* SOLID WHITE GLASS CARDS */
+/* ------------------------------------------------ */
+
 .custom-card {
-    background: rgba(255, 255, 255, 0.85);
-    border-radius: 24px;
-    padding: 2rem;
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255,255,255,1);
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 28px;
+    padding: 2.5rem;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
     margin-bottom: 2rem;
-    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 1);
+    backdrop-filter: blur(20px);
 }
 
 .card-header {
@@ -151,125 +164,141 @@ html, body, [class*="css"] {
 .card-title {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 20px;
 }
 
 .icon-circle {
-    width: 55px;
-    height: 55px;
-    border-radius: 16px;
+    width: 65px;
+    height: 65px;
+    border-radius: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+    font-size: 1.8rem;
+    box-shadow: 0 8px 15px rgba(0,0,0,0.08);
 }
 
-.blue-icon { background: #eff6ff; color: #3b82f6; border: 1px solid #dbeafe; }
-.green-icon { background: #f0fdf4; color: #10b981; border: 1px solid #d1fae5; }
+/* Highly saturated card icons */
+.blue-icon { background: #3b82f6; color: white; }
+.green-icon { background: #10b981; color: white; }
 
 .title-text {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: #1e293b;
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #0f172a;
 }
 
 .desc-text {
-    color: #64748b;
-    font-size: 0.95rem;
-    margin-top: 0.2rem;
+    color: #475569;
+    font-size: 1rem;
+    margin-top: 0.3rem;
 }
 
 .side-emoji {
-    font-size: 45px;
-    opacity: 0.8;
+    font-size: 50px;
 }
 
-/* Premium Inputs */
+/* ------------------------------------------------ */
+/* BOLD INPUTS */
+/* ------------------------------------------------ */
+
 .stNumberInput input, .stTextArea textarea {
-    background-color: #ffffff !important;
-    border: 1px solid #e2e8f0 !important;
-    border-radius: 16px !important;
-    color: #334155 !important;
+    background-color: #f8fafc !important;
+    border: 2px solid #cbd5e1 !important;
+    border-radius: 18px !important;
+    color: #0f172a !important;
     padding: 1.2rem !important;
-    font-size: 1rem !important;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.02) !important;
-    transition: all 0.2s ease !important;
-}
-
-.stTextArea textarea {
-    min-height: 220px !important;
-    line-height: 1.7 !important;
-}
-
-.stNumberInput input:focus, .stTextArea textarea:focus {
-    border-color: #a855f7 !important;
-    box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.15) !important;
-}
-
-/* Main Button */
-.stButton > button {
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 50px !important;
-    padding: 1rem 3.5rem !important;
-    font-size: 1.1rem !important;
+    font-size: 1.05rem !important;
     font-weight: 600 !important;
-    letter-spacing: 0.5px;
-    display: block;
-    margin: 2rem auto;
-    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.25) !important;
     transition: all 0.3s ease !important;
 }
 
+.stTextArea textarea {
+    min-height: 250px !important;
+    line-height: 1.8 !important;
+}
+
+.stNumberInput input:focus, .stTextArea textarea:focus {
+    border-color: #e73c7e !important;
+    box-shadow: 0 0 0 4px rgba(231, 60, 126, 0.2) !important;
+}
+
+/* ------------------------------------------------ */
+/* VIBRANT GRADIENT BUTTON */
+/* ------------------------------------------------ */
+
+.stButton > button {
+    background: linear-gradient(135deg, #FF0076 0%, #590FB7 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 50px !important;
+    padding: 1.2rem 4rem !important;
+    font-size: 1.2rem !important;
+    font-weight: 800 !important;
+    letter-spacing: 1px;
+    display: block;
+    margin: 2.5rem auto;
+    box-shadow: 0 10px 25px rgba(89, 15, 183, 0.4) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
 .stButton > button:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 25px rgba(99, 102, 241, 0.35) !important;
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 15px 35px rgba(255, 0, 118, 0.5) !important;
 }
 
-/* Output Containers */
+/* ------------------------------------------------ */
+/* HIGH-CONTRAST OUTPUT CONTAINERS */
+/* ------------------------------------------------ */
+
 .colored-block {
-    padding: 1.8rem;
-    border-radius: 20px;
-    margin-bottom: 1.5rem;
+    padding: 2rem;
+    border-radius: 24px;
+    margin-bottom: 2rem;
     background: #ffffff;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.03);
-    border: 1px solid rgba(0,0,0,0.02);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+    position: relative;
+    overflow: hidden;
 }
 
-.narrative-block { border-left: 6px solid #3b82f6; }
-.chat-block { border-left: 6px solid #10b981; }
-.email-block { border-left: 6px solid #f59e0b; }
+/* Bright Side Borders */
+.narrative-block { border-left: 8px solid #4f46e5; background: rgba(79, 70, 229, 0.03); }
+.chat-block { border-left: 8px solid #ec4899; background: rgba(236, 72, 153, 0.03); }
+.email-block { border-left: 8px solid #f59e0b; background: rgba(245, 158, 11, 0.03); }
 
 .block-title {
-    font-size: 1.2rem;
-    font-weight: 700;
+    font-size: 1.4rem;
+    font-weight: 900;
     margin-bottom: 1.2rem;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
 }
 
-.narrative-title { color: #2563eb; }
-.chat-title { color: #059669; }
+.narrative-title { color: #4f46e5; }
+.chat-title { color: #db2777; }
 .email-title { color: #d97706; }
 
-/* Code Blocks */
+/* ------------------------------------------------ */
+/* CODE BLOCKS (ST.CODE OVERRIDES) */
+/* ------------------------------------------------ */
+
 pre {
-    border-radius: 12px !important;
-    background: #f8fafc !important;
-    border: 1px solid #e2e8f0 !important;
-    padding: 1.2rem !important;
-    color: #334155 !important;
+    border-radius: 16px !important;
+    background: #ffffff !important;
+    border: 2px solid rgba(0,0,0,0.05) !important;
+    padding: 1.5rem !important;
+    color: #0f172a !important;
+    font-size: 1rem !important;
+    box-shadow: inset 0 4px 10px rgba(0,0,0,0.02) !important;
 }
 
 @media (max-width: 768px) {
-    .main-title { font-size: 2.2rem; }
-    .title-text { font-size: 1.2rem; }
-    .hero-top-image { width: 80px; }
+    .main-title { font-size: 2.8rem; }
+    .title-text { font-size: 1.3rem; }
+    .hero-top-image { width: 90px; }
     .side-emoji { display: none; }
-    .card-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .card-header { flex-direction: column; align-items: flex-start; gap: 15px; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -359,7 +388,7 @@ if generate:
     if not raw_updates.strip():
         st.warning("⚠️ Please provide raw updates before generating.")
     else:
-        with st.spinner("✨ Crafting your updates..."):
+        with st.spinner("✨ Crafting your vibrant updates..."):
             try:
                 current_date = datetime.now().strftime("%B %d, %Y")
 
@@ -396,7 +425,7 @@ Updates:
                 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # NARRATIVE BLOCK (BLUE)
+                # NARRATIVE BLOCK (INDIGO)
                 st.markdown("""
                 <div class="colored-block narrative-block">
                     <div class="block-title narrative-title">🗣️ Standup Narrative</div>
@@ -404,7 +433,7 @@ Updates:
                 st.code(generated_data.get("standup_narrative", "Error generating narrative."), language="text")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-                # CHAT BLOCK (GREEN)
+                # CHAT BLOCK (PINK)
                 st.markdown("""
                 <div class="colored-block chat-block">
                     <div class="block-title chat-title">💬 Chat Update</div>
@@ -412,7 +441,7 @@ Updates:
                 st.code(generated_data.get("chat_update", "Error generating chat update."), language="text")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-                # EMAIL BLOCK (ORANGE)
+                # EMAIL BLOCK (AMBER)
                 st.markdown("""
                 <div class="colored-block email-block">
                     <div class="block-title email-title">📧 Email Update</div>
@@ -422,7 +451,7 @@ Updates:
                 
                 # Usage Tracker
                 if hasattr(response, 'usage_metadata'):
-                    st.caption(f"🛡️ **Cost Guard Active:** Used {response.usage_metadata.total_token_count} total tokens. *(Highly Optimized)*")
+                    st.markdown(f"<p style='color: white; text-align: center; text-shadow: 0 2px 4px rgba(0,0,0,0.5);'>🛡️ Cost Guard Active: Used {response.usage_metadata.total_token_count} total tokens.</p>", unsafe_allow_html=True)
 
             except json.JSONDecodeError:
                 st.error("❌ Error: The AI did not return a valid JSON format. Please try again.")
