@@ -1,4 +1,5 @@
 import streamlit as st
+import json
 from google import genai
 from google.genai import types
 from datetime import datetime
@@ -42,61 +43,18 @@ STRICT RULES FOR FORMATTING (CRITICAL):
 - You MUST write complete, grammatically correct sentences for every single subtask.
 - ALWAYS use a standard hyphen "-" for bullet points in the Chat and Email updates. Do not use asterisks or dots for tasks.
 - Keep each person's updates strictly separated under their name.
-- ALWAYS follow the EXACT layout and wording of the template below.
-- DO NOT add any introductory or concluding conversational text. Output ONLY the filled template.
+- DO NOT add any introductory or concluding conversational text. 
+- You MUST output a valid JSON object with EXACTLY three keys: "standup_narrative", "chat_update", and "email_update".
 
-EXPECTED OUTPUT TEMPLATE:
+EXPECTED JSON STRUCTURE AND TEMPLATE:
 
-# 🗣️ Standup Narrative
-
-Good morning, everyone.
-
-Here is the status update for [Insert Provided Date].
-
-Starting with [Name 1], [he/she] is currently focused on [task narrative] and [task narrative].
-
-Moving on to [Name 2], [he/she] is progressing with [task narrative] and [task narrative].
-
-Finally, [Name 3] is concentrating on [task narrative].
-
-That concludes today’s status update.
-
----
-
-### 📋 Copy Chat Update
-
-Daily Project Status Update | [Insert Provided Date]
-
-• [Name 1]
-- [Task 1 written as a complete sentence].
-- [Task 2 written as a complete sentence].
-
-• [Name 2]
-- [Task 1 written as a complete sentence].
-- [Task 2 written as a complete sentence].
-
----
-
-### 📋 Copy Email Update
-
-Subject: Daily Project Status Update | [Insert Provided Date]
-
-Dear Team,
-
-I am writing to share the status for the activities performed on [Insert Provided Date].
-
-[Name 1]
-- [Task 1 written as a complete sentence].
-- [Task 2 written as a complete sentence].
-
-[Name 2]
-- [Task 1 written as a complete sentence].
-- [Task 2 written as a complete sentence].
-
-Let me know in case you need more details.
-
-Regards,
-[Name]
+{
+  "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Insert Provided Date].\\n\\nStarting with [Name 1], he/she is currently focused on [task narrative].\\n\\nMoving on to [Name 2], he/she is progressing with [task narrative].\\n\\nFinally, [Name 3] is concentrating on [task narrative].\\n\\nThat concludes today’s status update.",
+  
+  "chat_update": "Daily Project Status Update | [Insert Provided Date]\\n\\n• [Name 1]\\n- [Task 1 written as a complete sentence].\\n- [Task 2 written as a complete sentence].\\n\\n• [Name 2]\\n- [Task 1 written as a complete sentence].",
+  
+  "email_update": "Subject: Daily Project Status Update | [Insert Provided Date]\\n\\nDear Team,\\n\\nI am writing to share the status for the activities performed on [Insert Provided Date].\\n\\n[Name 1]\\n- [Task 1 written as a complete sentence].\\n- [Task 2 written as a complete sentence].\\n\\n[Name 2]\\n- [Task 1 written as a complete sentence].\\n\\nLet me know in case you need more details.\\n\\nRegards,\\n[Name]"
+}
 """
 
 # ---------------------------------------------------
@@ -260,18 +218,49 @@ html, body, [class*="css"] {
     box-shadow: 0 18px 35px rgba(59,92,255,0.35);
 }
 
-.output-card {
-    background: rgba(255,255,255,0.88);
-    border-radius: 28px;
-    padding: 2rem;
-    box-shadow: 0 15px 40px rgba(15,23,42,0.08);
-    margin-top: 2rem;
+/* ------------------------------------------------ */
+/* COLOR-CODED OUTPUT BLOCKS */
+/* ------------------------------------------------ */
+
+.colored-block {
+    padding: 1.5rem;
+    border-radius: 18px;
+    margin-bottom: 2rem;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.04);
 }
 
+.narrative-block {
+    background: linear-gradient(to right, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.15));
+    border-left: 6px solid #3b82f6;
+}
+
+.chat-block {
+    background: linear-gradient(to right, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.15));
+    border-left: 6px solid #10b981;
+}
+
+.email-block {
+    background: linear-gradient(to right, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.15));
+    border-left: 6px solid #f59e0b;
+}
+
+.block-title {
+    font-size: 1.3rem;
+    font-weight: 800;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.narrative-title { color: #1e3a8a; }
+.chat-title { color: #064e3b; }
+.email-title { color: #78350f; }
+
 pre {
-    border-radius: 18px !important;
-    background: #eff6ff !important;
-    border: 1px solid #dbeafe !important;
+    border-radius: 12px !important;
+    background: rgba(255,255,255,0.85) !important;
+    border: 1px solid rgba(0,0,0,0.05) !important;
     padding: 1rem !important;
 }
 
@@ -395,23 +384,50 @@ Updates:
                         types.Part.from_text(text=SYSTEM_INSTRUCTIONS)
                     ],
                     temperature=0.1, 
-                    max_output_tokens=600 # Tightly capped to prevent token bleed
+                    max_output_tokens=800,
+                    response_mime_type="application/json" # FORCES JSON OUTPUT
                 )
 
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash-lite", # The most cost-efficient model
+                    model="gemini-2.5-flash-lite", 
                     contents=contents,
                     config=config
                 )
+                
+                # Parse the JSON response
+                generated_data = json.loads(response.text)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
 
-                st.markdown('<div class="output-card">', unsafe_allow_html=True)
-                st.markdown(response.text)
+                # NARRATIVE BLOCK (BLUE)
+                st.markdown("""
+                <div class="colored-block narrative-block">
+                    <div class="block-title narrative-title">🗣️ Standup Narrative</div>
+                """, unsafe_allow_html=True)
+                st.code(generated_data.get("standup_narrative", "Error generating narrative."), language="text")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                # CHAT BLOCK (GREEN)
+                st.markdown("""
+                <div class="colored-block chat-block">
+                    <div class="block-title chat-title">💬 Chat Update</div>
+                """, unsafe_allow_html=True)
+                st.code(generated_data.get("chat_update", "Error generating chat update."), language="text")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                # EMAIL BLOCK (ORANGE)
+                st.markdown("""
+                <div class="colored-block email-block">
+                    <div class="block-title email-title">📧 Email Update</div>
+                """, unsafe_allow_html=True)
+                st.code(generated_data.get("email_update", "Error generating email update."), language="text")
+                st.markdown("</div>", unsafe_allow_html=True)
                 
                 # Usage Tracker
                 if hasattr(response, 'usage_metadata'):
                     st.caption(f"🛡️ **Cost Guard Active:** Used {response.usage_metadata.total_token_count} total tokens. *(Highly Optimized)*")
-                
-                st.markdown("</div>", unsafe_allow_html=True)
 
+            except json.JSONDecodeError:
+                st.error("❌ Error: The AI did not return a valid JSON format. Please try again.")
             except Exception as e:
                 st.error(f"❌ Error generating response: {e}")
