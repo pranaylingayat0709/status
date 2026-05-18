@@ -130,133 +130,124 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 5. Elite CSS Injection: Dark Navy & Sketch Theme
+# 5. High-Contrast, Soft & Subtle Light Theme Styling
 st.markdown("""
     <style>
-    /* 1. Elegant sketch-style background layer */
+    /* 1. Light, subtle clean gray pattern background */
     .stApp {
-        background-image: url("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1920&q=50");
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-        background-color: #f4f4f5;
+        background-color: #f8fafc;
+        background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+        background-size: 24px 24px;
     }
     
-    /* 2. Main content wrapper layout constraints */
+    /* 2. Main content wrapper sizing to keep everything crisp and centered */
     .block-container {
-        max-width: 800px !important;
-        padding-top: 2rem !important;
+        max-width: 750px !important;
+        padding-top: 3rem !important;
         padding-bottom: 5rem !important;
     }
     
-    /* 3. Deep Navy App Container Box */
+    /* 3. Clean White Card Panel over the subtle gray background */
     .premium-container {
-        background: linear-gradient(180deg, #074e72 0%, #0b3c5d 100%);
-        padding: 3rem 2.5rem;
-        border-radius: 20px;
-        box-shadow: 0 25px 50px -12px rgba(11, 60, 93, 0.4);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        text-align: center;
+        background-color: #ffffff;
+        padding: 2.5rem;
+        border-radius: 16px;
+        box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+        border: 1px solid #e2e8f0;
         margin-bottom: 2rem;
     }
     
-    .premium-container h1 {
-        color: #ffffff !important;
+    /* 4. Sharp, Dark Blue Typography for Absolute Readability */
+    .main-title {
+        color: #0f172a !important;
         font-family: 'Inter', 'Segoe UI', sans-serif;
         font-weight: 700;
-        letter-spacing: -0.5px;
-        font-size: 2.5rem !important;
-        margin-bottom: 0.25rem !important;
+        font-size: 2.2rem;
+        margin-bottom: 0.25rem;
+        text-align: center;
     }
     
-    .premium-container p {
-        color: #93c5fd !important;
-        font-size: 1.1rem;
+    .main-subtitle {
+        color: #475569 !important;
+        font-size: 1.05rem;
         font-weight: 400;
-        opacity: 0.9;
-        margin-bottom: 0px !important;
+        text-align: center;
+        margin-bottom: 2rem;
     }
 
-    /* 4. Section Typography */
     h3 {
-        color: #ffffff !important;
-        font-size: 1.3rem !important;
+        color: #1e3a8a !important;
+        font-size: 1.2rem !important;
         margin-top: 1.5rem !important;
         margin-bottom: 0.5rem !important;
-        text-align: left !important;
         font-weight: 600 !important;
     }
     
-    /* 5. Input Components Styling */
+    /* 5. Inputs Styling - Dark text over crisp white background */
     .stTextArea textarea {
-        background-color: rgba(255, 255, 255, 0.95) !important;
-        border-radius: 12px !important;
-        border: 2px solid #93c5fd !important;
+        background-color: #ffffff !important;
+        border-radius: 8px !important;
+        border: 1px solid #cbd5e1 !important;
         color: #0f172a !important;
-        font-size: 1rem !important;
+        font-size: 0.95rem !important;
+    }
+    .stTextArea textarea:focus {
+        border-color: #2563eb !important;
     }
     
     .stNumberInput input {
-        background-color: rgba(255, 255, 255, 0.95) !important;
-        border-radius: 12px !important;
-        border: 2px solid #93c5fd !important;
+        background-color: #ffffff !important;
+        border-radius: 8px !important;
+        border: 1px solid #cbd5e1 !important;
         color: #0f172a !important;
-        font-size: 1rem !important;
+        font-size: 0.95rem !important;
     }
     
+    /* Widget Labels styling */
     label p {
-        color: #e0f2fe !important;
-        font-weight: 500 !important;
-        font-size: 1rem !important;
+        color: #334155 !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
     }
 
-    /* 6. Soft Light-Blue Pill Button */
+    /* 6. Elegant Corporate Blue Rounded Button */
     div.stButton > button:first-child { 
-        background: linear-gradient(90deg, #93c5fd 0%, #60a5fa 100%) !important;
-        color: #0b3c5d !important; 
-        border-radius: 30px !important; 
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+        color: #ffffff !important; 
+        border-radius: 25px !important; 
         border: none !important;
-        padding: 0.75rem 3rem !important;
-        font-weight: 700 !important;
-        font-size: 1.1rem !important;
+        padding: 0.65rem 2.5rem !important;
+        font-weight: 600 !important;
+        font-size: 1rem !important;
         width: auto !important;
         margin: 2rem auto 0 auto !important;
         display: block !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 4px 15px rgba(147, 197, 253, 0.4) !important;
+        transition: all 0.2s ease !important;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2) !important;
     }
     div.stButton > button:first-child:hover {
-        background: linear-gradient(90deg, #bfdbfe 0%, #93c5fd 100%) !important;
-        transform: translateY(-2px) scale(1.02) !important;
-        box-shadow: 0 8px 25px rgba(147, 197, 253, 0.6) !important;
+        background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3) !important;
     }
     
-    /* 7. Output Panel Frame */
+    /* 7. Output Result Box Card */
     .output-card {
-        background-color: rgba(255, 255, 255, 0.98);
-        border-radius: 16px;
+        background-color: #ffffff;
+        border-radius: 12px;
+        border-left: 4px solid #2563eb;
         padding: 2rem;
-        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
-        margin-top: 2rem;
-        text-align: left !important;
-    }
-    .output-card p, .output-card li {
-        color: #1e293b !important;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+        margin-top: 1.5rem;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 6. Central Layout Shell Initialization
+# 6. Central Workspace Card Rendering
 st.markdown('<div class="premium-container">', unsafe_allow_html=True)
 
-# Main 3D Banner Illustration Asset
-st.image(
-    "https://img.freepik.com/free-vactor/3d-render-minimal-conceptual-interface-design_4c782b.jpg",
-    use_container_width=True
-)
-
-st.markdown("<h1>PrashantStatus</h1>", unsafe_allow_html=True)
-st.markdown("<p>Professional status updates consolidated into standup narratives, chat, and emails.</p>", unsafe_allow_html=True)
+st.markdown('<div class="main-title">📊 PrashantStatus</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-subtitle">Professional status updates consolidated into standup narratives, chat, and emails.</div>', unsafe_allow_html=True)
 
 st.markdown("### ⚙️ Workspace Parameters")
 people_count = st.number_input("Total active team members today:", min_value=1, step=1, value=1)
@@ -268,14 +259,14 @@ raw_updates = st.text_area(
     placeholder="Example:\nPranay:\n- Fixing backend version mismatches.\n- Deploying local database hotfixes.\n- No current blocks."
 )
 
-# Compile Execution Configuration Trigger
-if st.button("✦ Start Compilation", type="primary"):
+# Compile Trigger Pipeline
+if st.button("✦ Compile Updates", type="primary"):
     st.markdown('</div>', unsafe_allow_html=True)
     
     if not raw_updates.strip():
         st.warning("Please provide raw status notes before continuing.")
     else:
-        with st.spinner("Processing technical configurations..."):
+        with st.spinner("Processing technical notes cleanly..."):
             try:
                 prompt_payload = f"Total Count: {people_count}\nUpdates:\n{raw_updates}"
                 
@@ -306,6 +297,6 @@ if st.button("✦ Start Compilation", type="primary"):
                 st.markdown('</div>', unsafe_allow_html=True)
                 
             except Exception as e:
-                st.error(f"Execution Error encountered during compilation pipeline: {e}")
+                st.error(f"Execution Error encountered: {e}")
 else:
     st.markdown('</div>', unsafe_allow_html=True)
