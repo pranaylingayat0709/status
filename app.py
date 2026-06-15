@@ -1,13 +1,13 @@
 import streamlit as st
 import json
-from google import genai
-from google.genai import types
+from openai import OpenAI
+import requests
+from streamlit_lottie import st_lottie
 from datetime import datetime
 
 # ---------------------------------------------------
 # PAGE CONFIG
 # ---------------------------------------------------
-
 st.set_page_config(
     page_title="PrashantStatus",
     page_icon="✨",
@@ -16,25 +16,36 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------
+# LOTTIE ANIMATION HELPER
+# ---------------------------------------------------
+def load_lottieurl(url: str):
+    r = requests.get(url)
+    if r.status_code != 200:
+        return None
+    return r.json()
+
+# Load a clean, abstract, slow-moving minimal blue wave loop
+lottie_intro = load_lottieurl("https://lottie.host/80c4ab6c-5900-4ea2-8b65-68b449b28b7e/P5592hPz0z.json")
+
+# ---------------------------------------------------
 # API KEY CHECK
 # ---------------------------------------------------
-
-if "GEMINI_API_KEY" not in st.secrets:
-    st.error("🔑 GEMINI_API_KEY not found in Streamlit secrets.")
+if "NVIDIA_API_KEY" not in st.secrets:
+    st.error("🔑 NVIDIA_API_KEY not found in Streamlit secrets.")
+    st.info("Please add NVIDIA_API_KEY to your Streamlit secrets to continue.")
     st.stop()
 
 # ---------------------------------------------------
-# GEMINI CLIENT
+# NVIDIA NIM CLIENT
 # ---------------------------------------------------
-
-client = genai.Client(
-    api_key=st.secrets["GEMINI_API_KEY"]
+client = OpenAI(
+  base_url="https://integrate.api.nvidia.com/v1",
+  api_key=st.secrets["NVIDIA_API_KEY"]
 )
 
 # ---------------------------------------------------
-# SYSTEM PROMPT (UPDATED FOR FULL SENTENCES)
+# SYSTEM PROMPT (JSON STRICT FORMATTING)
 # ---------------------------------------------------
-
 SYSTEM_INSTRUCTIONS = """
 You are PrashantStatus, a precise professional assistant.
 
@@ -51,7 +62,7 @@ STRICT RULES FOR FORMATTING & WRITING (CRITICAL):
 EXPECTED JSON STRUCTURE AND TEMPLATE:
 
 {
-  "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Insert Provided Date].\\n\\nStarting with [Name 1], he/she is currently focused on [Rewrite task into narrative].\\n\\nMoving on to [Name 2], he/she is progressing with [Rewrite task into narrative].\\n\\nFinally, [Name 3] is concentrating on [Rewrite task into narrative].\\n\\nThat concludes today’s status update.",
+  "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Insert Provided Date].\\n\\nStarting with [Name 1], he/she is currently focused on [Rewrite task into narrative].\\n\\nMoving on to [Name 2], he/she is progressing with [Rewrite task into narrative].\\n\\nThat concludes today’s status update.",
   
   "chat_update": "Daily Project Status Update | [Insert Provided Date]\\n\\n• [Name 1]\\n- [Expanded, complete professional sentence for Task 1].\\n- [Expanded, complete professional sentence for Task 2].\\n\\n• [Name 2]\\n- [Expanded, complete professional sentence for Task 1].",
   
@@ -60,370 +71,180 @@ EXPECTED JSON STRUCTURE AND TEMPLATE:
 """
 
 # ---------------------------------------------------
-# CUSTOM CSS (VIBRANT AURORA THEME)
+# CUSTOM CSS (Refined Apple-like + Colored Output Blocks)
 # ---------------------------------------------------
-
 st.markdown("""
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
-
+/* Global Reset */
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
 }
 
-/* ------------------------------------------------ */
-/* ANIMATED VIBRANT BACKGROUND */
-/* ------------------------------------------------ */
-
-@keyframes gradientBG {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
+/* Subtle Premium Background */
 .stApp {
-    background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
-    background-size: 400% 400%;
-    animation: gradientBG 15s ease infinite;
+    background-color: #f8fafc;
+    background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+    background-size: 24px 24px;
     min-height: 100vh;
 }
 
+/* Centered Content Container */
 .main .block-container {
-    max-width: 1000px;
+    max-width: 900px;
     padding-top: 2rem;
     padding-bottom: 4rem;
 }
 
-#MainMenu, footer, header {
-    visibility: hidden;
+/* Hide Default Streamlit UI */
+#MainMenu, footer, header { visibility: hidden; }
+
+/* Smooth Fade-In Animation */
+.stApp .block-container * {
+    animation: fadeIn 0.8s ease-in-out forwards;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-/* ------------------------------------------------ */
-/* HERO SECTION (WHITE TEXT TO POP ON GRADIENT) */
-/* ------------------------------------------------ */
-
-.hero-section {
-    text-align: center;
-    margin-bottom: 3.5rem;
-}
-
-.hero-top-image {
-    width: 110px;
-    margin: auto;
-    margin-bottom: 1.5rem;
-    filter: drop-shadow(0 15px 20px rgba(0,0,0,0.2));
-}
-
-.hero-top-image img {
-    width: 100%;
-}
-
+/* Hero Section Typography */
+.hero-section { text-align: center; margin-bottom: 2rem; }
 .main-title {
-    font-size: 4rem;
-    font-weight: 900;
-    color: #ffffff !important;
-    letter-spacing: -1.5px;
-    margin-bottom: 0.5rem;
-    text-shadow: 0 10px 20px rgba(0,0,0,0.15);
+    font-size: 3.5rem; font-weight: 800; color: #0f172a;
+    letter-spacing: -1.5px; margin-bottom: 0.5rem; margin-top: -1rem;
 }
-
-.main-title span {
-    color: #ffde59 !important; /* Bright Yellow/Gold */
-}
-
+.main-title span { color: #2563eb; }
 .main-subtitle {
-    color: rgba(255, 255, 255, 0.95) !important;
-    font-size: 1.25rem;
-    font-weight: 600;
-    max-width: 650px;
-    margin: auto;
-    line-height: 1.6;
-    text-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    color: #475569; font-size: 1.1rem; max-width: 600px;
+    margin: auto; line-height: 1.6; margin-bottom: 2rem;
 }
 
-/* ------------------------------------------------ */
-/* SOLID WHITE GLASS CARDS */
-/* ------------------------------------------------ */
-
+/* Clean White Input Cards */
 .custom-card {
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 28px;
-    padding: 2.5rem;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
-    margin-bottom: 2rem;
-    border: 1px solid rgba(255, 255, 255, 1);
-    backdrop-filter: blur(20px);
+    background-color: #ffffff; border-radius: 16px; padding: 2rem;
+    box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.05);
+    border: 1px solid #e2e8f0; margin-bottom: 1.5rem; transition: all 0.3s ease;
 }
+.custom-card:hover { box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08); }
 
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-}
+/* Card Headers */
+.card-title { display: flex; align-items: center; gap: 12px; margin-bottom: 1rem; }
+.icon-circle { font-size: 1.5rem; }
+.title-text { font-size: 1.25rem; font-weight: 700; color: #0f172a; }
 
-.card-title {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-}
-
-.icon-circle {
-    width: 65px;
-    height: 65px;
-    border-radius: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.8rem;
-    box-shadow: 0 8px 15px rgba(0,0,0,0.08);
-}
-
-/* Highly saturated card icons */
-.blue-icon { background: #3b82f6; color: white; }
-.green-icon { background: #10b981; color: white; }
-
-.title-text {
-    font-size: 1.6rem;
-    font-weight: 800;
-    color: #0f172a;
-}
-
-.desc-text {
-    color: #475569;
-    font-size: 1rem;
-    margin-top: 0.3rem;
-}
-
-.side-emoji {
-    font-size: 50px;
-}
-
-/* ------------------------------------------------ */
-/* BOLD INPUTS */
-/* ------------------------------------------------ */
-
+/* Native Input Styling */
 .stNumberInput input, .stTextArea textarea {
-    background-color: #f8fafc !important;
-    border: 2px solid #cbd5e1 !important;
-    border-radius: 18px !important;
-    color: #0f172a !important;
-    padding: 1.2rem !important;
-    font-size: 1.05rem !important;
-    font-weight: 600 !important;
-    transition: all 0.3s ease !important;
+    background-color: #f8fafc !important; border: 1px solid #cbd5e1 !important;
+    border-radius: 12px !important; color: #0f172a !important;
+    padding: 0.75rem 1rem !important; font-size: 1rem !important;
 }
-
-.stTextArea textarea {
-    min-height: 250px !important;
-    line-height: 1.8 !important;
-}
-
 .stNumberInput input:focus, .stTextArea textarea:focus {
-    border-color: #e73c7e !important;
-    box-shadow: 0 0 0 4px rgba(231, 60, 126, 0.2) !important;
+    border-color: #3b82f6 !important; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Animated Primary Button */
+div.stButton > button:first-child { 
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+    color: #ffffff !important; border-radius: 30px !important; border: none !important;
+    padding: 0.75rem 3rem !important; font-weight: 600 !important; font-size: 1.1rem !important;
+    display: block !important; margin: 2rem auto 0 auto !important; transition: all 0.3s ease !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2) !important;
+}
+div.stButton > button:first-child:hover {
+    transform: translateY(-2px); box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3) !important;
 }
 
 /* ------------------------------------------------ */
-/* VIBRANT GRADIENT BUTTON */
+/* HIGH-CONTRAST OUTPUT CONTAINERS (From earlier code) */
 /* ------------------------------------------------ */
-
-.stButton > button {
-    background: linear-gradient(135deg, #FF0076 0%, #590FB7 100%) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 50px !important;
-    padding: 1.2rem 4rem !important;
-    font-size: 1.2rem !important;
-    font-weight: 800 !important;
-    letter-spacing: 1px;
-    display: block;
-    margin: 2.5rem auto;
-    box-shadow: 0 10px 25px rgba(89, 15, 183, 0.4) !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-.stButton > button:hover {
-    transform: translateY(-5px) scale(1.02);
-    box-shadow: 0 15px 35px rgba(255, 0, 118, 0.5) !important;
-}
-
-/* ------------------------------------------------ */
-/* HIGH-CONTRAST OUTPUT CONTAINERS */
-/* ------------------------------------------------ */
-
 .colored-block {
-    padding: 2rem;
-    border-radius: 24px;
-    margin-bottom: 2rem;
-    background: #ffffff;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-    position: relative;
-    overflow: hidden;
+    padding: 2rem; border-radius: 16px; margin-bottom: 1.5rem;
+    background: #ffffff; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
 }
-
-/* Bright Side Borders */
-.narrative-block { border-left: 8px solid #4f46e5; background: rgba(79, 70, 229, 0.03); }
-.chat-block { border-left: 8px solid #ec4899; background: rgba(236, 72, 153, 0.03); }
-.email-block { border-left: 8px solid #f59e0b; background: rgba(245, 158, 11, 0.03); }
+.narrative-block { border-left: 6px solid #4f46e5; }
+.chat-block { border-left: 6px solid #ec4899; }
+.email-block { border-left: 6px solid #f59e0b; }
 
 .block-title {
-    font-size: 1.4rem;
-    font-weight: 900;
-    margin-bottom: 1.2rem;
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    font-size: 1.25rem; font-weight: 800; margin-bottom: 1rem;
+    display: flex; align-items: center; gap: 10px;
 }
-
 .narrative-title { color: #4f46e5; }
 .chat-title { color: #db2777; }
 .email-title { color: #d97706; }
 
-/* ------------------------------------------------ */
-/* CODE BLOCKS (ST.CODE OVERRIDES) */
-/* ------------------------------------------------ */
-
+/* Clean Code Blocks */
 pre {
-    border-radius: 16px !important;
-    background: #ffffff !important;
-    border: 2px solid rgba(0,0,0,0.05) !important;
-    padding: 1.5rem !important;
-    color: #0f172a !important;
-    font-size: 1rem !important;
-    box-shadow: inset 0 4px 10px rgba(0,0,0,0.02) !important;
-}
-
-@media (max-width: 768px) {
-    .main-title { font-size: 2.8rem; }
-    .title-text { font-size: 1.3rem; }
-    .hero-top-image { width: 90px; }
-    .side-emoji { display: none; }
-    .card-header { flex-direction: column; align-items: flex-start; gap: 15px; }
+    border-radius: 12px !important; background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important; padding: 1.5rem !important; color: #0f172a !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------
-# HERO SECTION
+# ANIMATED HERO SECTION
 # ---------------------------------------------------
+st.markdown('<div class="hero-section">', unsafe_allow_html=True)
 
-st.markdown("""
-<div class="hero-section">
-<div class="hero-top-image">
-<img src="https://cdn-icons-png.flaticon.com/512/4149/4149653.png">
-</div>
-<div class="main-title">✨ Prashant<span>Status</span></div>
-<div class="main-subtitle">
-A beautifully automated workspace for generating professional standup narratives, chat updates, and daily emails.
-</div>
-</div>
-""", unsafe_allow_html=True)
+if lottie_intro:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st_lottie(lottie_intro, speed=0.7, reverse=False, loop=True, quality="high", height=140)
+else:
+    st.markdown('<div class="hero-top-image"><img src="https://cdn-icons-png.flaticon.com/512/4149/4149653.png"></div>', unsafe_allow_html=True)
 
-# ---------------------------------------------------
-# TEAM CONFIGURATION CARD
-# ---------------------------------------------------
-
-st.markdown("""
-<div class="custom-card">
-<div class="card-header">
-<div class="card-title">
-<div class="icon-circle blue-icon">👥</div>
-<div>
-<div class="title-text">Team Size</div>
-<div class="desc-text">Select the total number of active team members for today.</div>
-</div>
-</div>
-<div class="side-emoji">📊</div>
-</div>
-""", unsafe_allow_html=True)
-
-people_count = st.number_input(
-    "Total active team members today",
-    min_value=1,
-    value=1,
-    step=1,
-    label_visibility="collapsed"
-)
+st.markdown('<div class="main-title">Prashant<span>Status</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-subtitle">Professional status updates consolidated into standup narratives, chat, and emails.</div>', unsafe_allow_html=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------
-# RAW TEAM UPDATES CARD
+# CONFIGURATION INPUTS
 # ---------------------------------------------------
+st.markdown("""
+<div class="custom-card">
+    <div class="card-title"><div class="icon-circle">👥</div><div class="title-text">Workspace Parameters</div></div>
+""", unsafe_allow_html=True)
+people_count = st.number_input("Total active team members today:", min_value=1, value=1, step=1, label_visibility="collapsed")
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("""
 <div class="custom-card">
-<div class="card-header">
-<div class="card-title">
-<div class="icon-circle green-icon">📝</div>
-<div>
-<div class="title-text">Raw Updates</div>
-<div class="desc-text">Paste the raw daily updates from your team below.</div>
-</div>
-</div>
-<div class="side-emoji">📋</div>
-</div>
+    <div class="card-title"><div class="icon-circle">📝</div><div class="title-text">Raw Update Intake</div></div>
 """, unsafe_allow_html=True)
-
-raw_updates = st.text_area(
-    "Paste team updates below:",
-    placeholder="""Pranay:
-- Working on masking enhancements.
-- Resolving backend issues.
-
-Devyanshi:
-- Preparing test cases.
-- Resolving share certificate issues.
-""",
-    label_visibility="collapsed"
-)
+raw_updates = st.text_area("Paste team notes below:", placeholder="Example:\nPranay:\n- Fixing backend version mismatches.", label_visibility="collapsed")
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------
-# BUTTON & GENERATION
+# GENERATION TRIGGERS
 # ---------------------------------------------------
-
-generate = st.button("✨ Generate Professional Status")
-
-if generate:
+if st.button("✦ Compile Professional Updates"):
     if not raw_updates.strip():
         st.warning("⚠️ Please provide raw updates before generating.")
     else:
-        with st.spinner("✨ Crafting your vibrant updates..."):
+        with st.spinner("✨ Processing via NVIDIA Nemotron JSON formatting..."):
             try:
+                # Inject Live Date natively into the prompt
                 current_date = datetime.now().strftime("%B %d, %Y")
+                prompt_payload = f"Use this date for all sections: {current_date}\nTeam Members: {people_count}\nUpdates:\n{raw_updates}"
 
-                prompt_payload = f"""
-Use this date for all sections: {current_date}
-Team Members: {people_count}
-Updates:
-{raw_updates}
-"""
-                contents = [
-                    types.Content(
-                        role="user",
-                        parts=[types.Part.from_text(text=prompt_payload)]
-                    )
-                ]
-
-                config = types.GenerateContentConfig(
-                    system_instruction=[
-                        types.Part.from_text(text=SYSTEM_INSTRUCTIONS)
-                    ],
-                    temperature=0.1, 
-                    max_output_tokens=800,
-                    response_mime_type="application/json" 
+                # Execute NVIDIA NIM API Call using JSON enforcement
+                completion = client.chat.completions.create(
+                  model="nvidia/llama-3.3-nemotron-super-49b-v1",
+                  messages=[
+                    {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+                    {"role": "user", "content": prompt_payload}
+                  ],
+                  temperature=0.1, # Extremely low temperature for strict JSON adherence
+                  max_tokens=4096,
+                  response_format={"type": "json_object"} # Forces strict JSON output
                 )
 
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash-lite", 
-                    contents=contents,
-                    config=config
-                )
+                response_text = completion.choices[0].message.content
                 
                 # Parse the JSON response
-                generated_data = json.loads(response.text)
+                generated_data = json.loads(response_text)
                 
                 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -451,11 +272,12 @@ Updates:
                 st.code(generated_data.get("email_update", "Error generating email update."), language="text")
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-                # Usage Tracker
-                if hasattr(response, 'usage_metadata'):
-                    st.markdown(f"<p style='color: white; text-align: center; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.5);'>🛡️ Cost Guard Active: Used {response.usage_metadata.total_token_count} total tokens.</p>", unsafe_allow_html=True)
+                # Token Usage Tracker (Mapped to OpenAI's token format)
+                if hasattr(completion, 'usage') and completion.usage is not None:
+                    total_tokens = completion.usage.total_tokens
+                    st.markdown(f"<p style='color: #475569; text-align: center; font-size: 0.9rem;'>🛡️ Usage Tracker: Processed {total_tokens} total tokens.</p>", unsafe_allow_html=True)
 
             except json.JSONDecodeError:
-                st.error("❌ Error: The AI did not return a valid JSON format. Please try again.")
+                st.error("❌ Error: The AI did not return a valid JSON format. Please try generating again.")
             except Exception as e:
                 st.error(f"❌ Error generating response: {e}")
