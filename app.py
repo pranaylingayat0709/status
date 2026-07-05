@@ -1,12 +1,14 @@
 import streamlit as st
 import json
-from openai import OpenAI
-from datetime import datetime
 import time
+import re
+import hashlib
+from datetime import datetime, date, timedelta
+from openai import OpenAI
 
-# ---------------------------------------------------
+# ═══════════════════════════════════════════════════
 # PAGE CONFIG
-# ---------------------------------------------------
+# ═══════════════════════════════════════════════════
 st.set_page_config(
     page_title="SanghaStatus",
     page_icon="🏛️",
@@ -14,342 +16,574 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ---------------------------------------------------
-# API KEY CHECK
-# ---------------------------------------------------
+# ═══════════════════════════════════════════════════
+# SESSION STATE
+# ═══════════════════════════════════════════════════
+def init_state():
+    defaults = {
+        "dark_mode":       False,
+        "history":         [],      # list of saved standup dicts
+        "session_tokens":  0,
+        "last_generated":  0.0,     # epoch — for rate-limit guard
+        "parsed_members":  [],      # auto-detected member names
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+init_state()
+
+# ═══════════════════════════════════════════════════
+# API
+# ═══════════════════════════════════════════════════
 if "NVIDIA_API_KEY" not in st.secrets:
     st.error("🔑 NVIDIA_API_KEY not found in Streamlit secrets.")
     st.stop()
 
-# ---------------------------------------------------
-# CLIENT
-# ---------------------------------------------------
 client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
     api_key=st.secrets["NVIDIA_API_KEY"]
 )
 
-# ---------------------------------------------------
-# SYSTEM PROMPT
-# ---------------------------------------------------
-SYSTEM_INSTRUCTIONS = """
-You are SanghaStatus, a precise professional assistant.
-
-STRICT RULES FOR FORMATTING & WRITING (CRITICAL):
-- TRANSFORM RAW INPUTS: DO NOT just copy-paste the raw bullet points. You MUST rewrite and expand every single short phrase into a full, professional, action-oriented sentence ending with a period.
-  * Bad: "- working on masking"
-  * Good: "- Currently working on implementing masking enhancements."
-- DO NOT combine, merge, or summarize sentences. Each raw task must remain its own standalone bullet point.
-- ALWAYS use a standard hyphen "-" for bullet points in the Chat and Email updates. Do not use asterisks.
-- Keep each person's updates strictly separated under their name.
-- DO NOT add any introductory or concluding conversational text.
-- You MUST output a valid JSON object with EXACTLY three keys: "standup_narrative", "chat_update", and "email_update".
-
-EXPECTED JSON STRUCTURE AND TEMPLATE:
-
-{
-  "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Insert Provided Date].\\n\\nStarting with [Name 1], he/she is currently focused on [Rewrite task into narrative].\\n\\nMoving on to [Name 2], he/she is progressing with [Rewrite task into narrative].\\n\\nFinally, [Name 3] is concentrating on [Rewrite task into narrative].\\n\\nThat concludes today's status update.",
-
-  "chat_update": "Daily Project Status Update | [Insert Provided Date]\\n\\n• [Name 1]\\n- [Expanded, complete professional sentence for Task 1].\\n- [Expanded, complete professional sentence for Task 2].\\n\\n• [Name 2]\\n- [Expanded, complete professional sentence for Task 1].",
-
-  "email_update": "Subject: Daily Project Status Update | [Insert Provided Date]\\n\\nDear Team,\\n\\nI am writing to share the status for the activities performed on [Insert Provided Date].\\n\\n[Name 1]\\n- [Expanded, complete professional sentence for Task 1].\\n- [Expanded, complete professional sentence for Task 2].\\n\\n[Name 2]\\n- [Expanded, complete professional sentence for Task 1].\\n\\nLet me know in case you need more details.\\n\\nRegards,\\n[Name]"
+# ═══════════════════════════════════════════════════
+# CONSTANTS
+# ═══════════════════════════════════════════════════
+TONE_OPTIONS = {
+    "📝 Formal":       "Use formal, complete sentences with professional vocabulary.",
+    "💬 Semi-formal":  "Use clear, professional but conversational sentences.",
+    "⚡ Concise":      "Use short, punchy one-line bullets. Be brief and direct.",
 }
-"""
 
-# ---------------------------------------------------
-# LOADER STAGES
-# ---------------------------------------------------
+DOMAIN_OPTIONS = {
+    "💻 Software Dev":  "software development",
+    "🧪 QA / Testing":  "quality assurance and testing",
+    "🚀 DevOps":        "DevOps and infrastructure",
+    "🎨 Design / UX":   "UI/UX design",
+    "📦 Product":       "product management",
+    "💰 Finance":       "financial operations",
+}
+
+OUTPUT_LANG_OPTIONS = {
+    "🇬🇧 English":  "English",
+    "🇮🇳 हिन्दी":   "Hindi (Devanagari script)",
+    "🇮🇳 मराठी":    "Marathi (Devanagari script)",
+}
+
 LOADER_STAGES = [
-    ("🏛️", "Gathering the Sangha…",              "Assembling your team's raw updates"),
-    ("📖", "Reading every task carefully…",       "Parsing each team member's input"),
-    ("✍️", "Rewriting into professional prose…",  "Expanding short notes into full sentences"),
-    ("🗣️", "Crafting the standup narrative…",     "Building the spoken script"),
-    ("💬", "Composing the chat update…",          "Formatting for team channels"),
-    ("📧", "Drafting the email…",                 "Polishing subject line and body"),
-    ("✨", "Finalising your update…",             "Running final quality check"),
+    ("🏛️", "Gathering the Sangha…",             "Assembling your team's raw updates"),
+    ("👥", "Detecting team members…",            "Auto-parsing names and tasks"),
+    ("✍️", "Rewriting into professional prose…", "Expanding notes into full sentences"),
+    ("🗣️", "Crafting the standup narrative…",    "Building the spoken script"),
+    ("💬", "Composing the chat update…",         "Formatting for team channels"),
+    ("📧", "Drafting the email…",                "Polishing subject line and body"),
+    ("✨", "Finalising your update…",            "Running final quality check"),
 ]
 
-def render_loader(stage_idx: int) -> str:
+RATE_LIMIT_SECS = 20   # cooldown between generations
+MAX_HISTORY     = 10
+
+# ═══════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════
+def parse_members(raw: str) -> list[dict]:
+    """Extract team members and their tasks from raw text."""
+    members = []
+    # Match "Name:" or "Name (role):" patterns
+    blocks = re.split(r'\n(?=[A-Z][^\n:]{0,30}:)', raw.strip())
+    for block in blocks:
+        lines = block.strip().splitlines()
+        if not lines:
+            continue
+        header = lines[0].strip().rstrip(":")
+        tasks  = [l.strip().lstrip("-•*").strip() for l in lines[1:]
+                  if l.strip() and l.strip()[0] in "-•*"]
+        blockers = [t for t in tasks if any(
+            w in t.lower() for w in ["block", "stuck", "wait", "depend", "issue", "pending"]
+        )]
+        if header and tasks:
+            members.append({
+                "name":     header,
+                "tasks":    tasks,
+                "blockers": blockers,
+                "count":    len(tasks),
+            })
+    return members
+
+
+def input_hash(text: str) -> str:
+    return hashlib.md5(text.encode()).hexdigest()
+
+
+def mailto_link(subject: str, body: str) -> str:
+    import urllib.parse
+    s = urllib.parse.quote(subject)
+    b = urllib.parse.quote(body)
+    return f"mailto:?subject={s}&body={b}"
+
+
+def render_loader(stage_idx: int, dark: bool) -> str:
     total = len(LOADER_STAGES)
     emoji, title, sub = LOADER_STAGES[stage_idx]
-    pct = int((stage_idx + 1) / total * 100)
+    pct  = int((stage_idx + 1) / total * 100)
+    bg   = "rgba(10,15,30,0.95)"  if dark else "rgba(255,255,255,0.97)"
+    tc   = "#DDD6FE"               if dark else "#1e1b4b"
+    sc   = "#A78BFA"               if dark else "#6d28d9"
     dots = "".join([
         f'<div class="ld {"ldone" if i < stage_idx else ("lactive" if i == stage_idx else "")}"></div>'
         for i in range(total)
     ])
     return f"""
-    <div class="loader-wrap">
+    <div class="loader-wrap" style="background:{bg};">
         <div class="loader-emoji">{emoji}</div>
-        <div class="loader-title">{title}</div>
-        <div class="loader-sub">{sub} &nbsp;·&nbsp; Step {stage_idx + 1} of {total}</div>
+        <div class="loader-title" style="color:{tc};">{title}</div>
+        <div class="loader-sub"   style="color:{sc};">{sub} &nbsp;·&nbsp; {stage_idx+1}/{total}</div>
         <div class="loader-dots">{dots}</div>
         <div class="loader-bar-bg">
             <div class="loader-bar-fg" style="width:{pct}%"></div>
         </div>
-        <div class="loader-pct">{pct}%</div>
-    </div>
-    """
+        <div class="loader-pct" style="color:{sc};">{pct}%</div>
+    </div>"""
 
-# ---------------------------------------------------
-# CUSTOM CSS
-# ---------------------------------------------------
-st.markdown("""
+
+# ═══════════════════════════════════════════════════
+# SYSTEM PROMPT BUILDER
+# ═══════════════════════════════════════════════════
+def build_prompt(tone: str, domain: str, lang: str,
+                 include_tomorrow: bool, include_blockers: bool) -> str:
+
+    tomorrow_key = (
+        '"tomorrow_plan": "Good morning, everyone.\\n\\n[Name 1] plans to [tomorrow task].\\n[Name 2] plans to [tomorrow task].\\n\\nThat concludes the plan for tomorrow.",'
+        if include_tomorrow else ""
+    )
+    blocker_key = (
+        '"blocker_summary": "Blockers identified today:\\n\\n[Name]: [Blocker detail].\\n(Write \\"No blockers reported today.\\" if none)",'
+        if include_blockers else ""
+    )
+
+    return f"""
+You are SanghaStatus, a precise professional assistant for engineering teams.
+
+DOMAIN CONTEXT: You are writing updates for a {domain} team.
+TONE: {tone}
+OUTPUT LANGUAGE: Write ALL output fields in {lang}.
+
+STRICT RULES:
+- TRANSFORM raw inputs — never copy-paste. Rewrite every phrase into a full professional sentence.
+- Each raw task stays as its own separate bullet. Do NOT merge tasks.
+- Use hyphen "-" for bullets in chat_update and email_update. Never asterisks.
+- Keep each person's updates strictly separated under their name.
+- Use correct pronouns inferred from context, or use their name if unclear.
+- NO introductory or concluding conversational text in the JSON values.
+- Return ONLY a valid JSON object — no markdown fences, no preamble.
+
+Return a JSON object with EXACTLY these keys:
+{{
+  "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Date].\\n\\n[Name 1]: [narrative].\\n\\n[Name 2]: [narrative].\\n\\nThat concludes today's status update.",
+  {tomorrow_key}
+  {blocker_key}
+  "chat_update": "Daily Project Status Update | [Date]\\n\\n• [Name 1]\\n- [Task 1 sentence].\\n- [Task 2 sentence].\\n\\n• [Name 2]\\n- [Task 1 sentence].",
+  "whatsapp_update": "📋 *Daily Status Update | [Date]*\\n\\n*[Name 1]*\\n- [Task 1].\\n\\n*[Name 2]*\\n- [Task 1].",
+  "email_update": "Subject: Daily Project Status Update | [Date]\\n\\nDear Team,\\n\\nPlease find below the status update for [Date].\\n\\n[Name 1]\\n- [Task 1].\\n\\n[Name 2]\\n- [Task 1].\\n\\nKindly revert in case of any queries.\\n\\nRegards,\\n[Team Lead Name]"
+}}
+"""
+
+# ═══════════════════════════════════════════════════
+# CSS
+# ═══════════════════════════════════════════════════
+def inject_css(dark: bool):
+    if dark:
+        vars_css = """
+        --app-bg:    linear-gradient(-45deg,#0d0221,#0a1628,#12062a,#061220);
+        --card-bg:   rgba(15,23,42,0.92);
+        --card-bdr:  rgba(255,255,255,0.08);
+        --text-h:    #F1F5F9;
+        --text-b:    #CBD5E1;
+        --text-m:    #64748B;
+        --input-bg:  rgba(15,23,42,0.95);
+        --input-bdr: rgba(255,0,118,0.35);
+        --input-txt: #F1F5F9;
+        --btn-sh1:   rgba(255,0,118,0.35);
+        --out-bg:    rgba(15,23,42,0.9);
+        --code-bg:   #0f172a;
+        --code-txt:  #E2E8F0;
+        --chip-bg:   rgba(255,255,255,0.06);
+        --chip-bdr:  rgba(255,255,255,0.1);
+        """
+    else:
+        vars_css = """
+        --app-bg:    linear-gradient(-45deg,#ee7752,#e73c7e,#23a6d5,#23d5ab);
+        --card-bg:   rgba(255,255,255,0.96);
+        --card-bdr:  rgba(255,255,255,1);
+        --text-h:    #0f172a;
+        --text-b:    #1e293b;
+        --text-m:    #475569;
+        --input-bg:  #f8fafc;
+        --input-bdr: #cbd5e1;
+        --input-txt: #0f172a;
+        --btn-sh1:   rgba(89,15,183,0.4);
+        --out-bg:    #ffffff;
+        --code-bg:   #fafafa;
+        --code-txt:  #0f172a;
+        --chip-bg:   rgba(255,255,255,0.7);
+        --chip-bdr:  rgba(0,0,0,0.08);
+        """
+
+    st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=Syne:wght@700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-}
+:root {{ {vars_css} }}
 
-/* ── ANIMATED GRADIENT BG ── */
-@keyframes gradientBG {
-    0%   { background-position: 0% 50%; }
-    50%  { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-.stApp {
-    background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
-    background-size: 400% 400%;
-    animation: gradientBG 15s ease infinite;
+html, body, [class*="css"] {{
+    font-family: 'Inter', sans-serif !important;
+    color: var(--text-b) !important;
+}}
+.stApp {{
+    background: var(--app-bg) !important;
+    background-size: 400% 400% !important;
+    animation: gradientBG 18s ease infinite !important;
     min-height: 100vh;
-}
-.main .block-container {
-    max-width: 1000px;
-    padding-top: 2rem;
+}}
+@keyframes gradientBG {{
+    0%   {{ background-position: 0% 50%; }}
+    50%  {{ background-position: 100% 50%; }}
+    100% {{ background-position: 0% 50%; }}
+}}
+.main .block-container {{
+    max-width: 1060px;
+    padding-top: 1rem !important;
     padding-bottom: 4rem;
-}
-#MainMenu, footer, header { visibility: hidden; }
+}}
+#MainMenu, footer, header {{ visibility: hidden; }}
+* {{ box-sizing: border-box; }}
+
+/* ── DARK TOGGLE ── */
+.dm-btn button {{
+    background: rgba(255,255,255,0.18) !important;
+    border: 1.5px solid rgba(255,255,255,0.35) !important;
+    border-radius: 999px !important;
+    color: #fff !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    padding: 0.4rem 1rem !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+}}
 
 /* ── HERO ── */
-.hero-section { text-align: center; margin-bottom: 3.5rem; }
-
-.hero-icon {
-    font-size: 4rem; display: block; margin-bottom: 0.75rem;
+.hero-section {{ text-align: center; margin-bottom: 3rem; }}
+.hero-icon {{
+    font-size: 3.8rem; display: block; margin-bottom: 0.75rem;
     animation: floatIcon 3s ease-in-out infinite;
-}
-@keyframes floatIcon {
-    0%,100% { transform: translateY(0); }
-    50%     { transform: translateY(-9px); }
-}
-
-.main-title {
+}}
+@keyframes floatIcon {{
+    0%,100% {{ transform: translateY(0); }}
+    50%      {{ transform: translateY(-9px); }}
+}}
+.main-title {{
     font-family: 'Syne', sans-serif;
-    font-size: 4rem; font-weight: 900;
-    color: #ffffff !important;
+    font-size: 3.8rem; font-weight: 900;
+    color: #ffffff !important; -webkit-text-fill-color: #ffffff !important;
     letter-spacing: -1.5px; margin-bottom: 0.4rem;
-    text-shadow: 0 10px 20px rgba(0,0,0,0.18);
-}
-.main-title span { color: #ffde59 !important; }
-
-.main-subtitle {
-    color: rgba(255,255,255,0.95) !important;
-    font-size: 1.2rem; font-weight: 600;
-    max-width: 650px; margin: 0.3rem auto 0;
-    line-height: 1.6; text-shadow: 0 4px 10px rgba(0,0,0,0.1);
-}
-
-/* Meaning pill */
-.sangha-meaning {
+    text-shadow: 0 10px 24px rgba(0,0,0,0.2);
+}}
+.main-title span {{ color: #ffde59 !important; -webkit-text-fill-color: #ffde59 !important; }}
+.main-subtitle {{
+    color: rgba(255,255,255,0.92) !important;
+    font-size: 1.15rem; font-weight: 600;
+    max-width: 660px; margin: 0.3rem auto 0; line-height: 1.6;
+}}
+.sangha-meaning {{
     display: inline-block; margin-top: 0.85rem;
     background: rgba(255,255,255,0.18);
     border: 1.5px solid rgba(255,255,255,0.4);
     border-radius: 999px; padding: 0.4rem 1.4rem;
     font-size: 0.88rem; font-weight: 600;
-    color: #ffffff !important;
-    letter-spacing: 0.02em; backdrop-filter: blur(10px);
-    text-shadow: 0 2px 6px rgba(0,0,0,0.12);
-}
+    color: #ffffff !important; -webkit-text-fill-color: #ffffff !important;
+    backdrop-filter: blur(10px);
+}}
 
 /* ── CARDS ── */
-.custom-card {
-    background: rgba(255,255,255,0.96);
-    border-radius: 28px; padding: 2.5rem;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
-    margin-bottom: 2rem;
-    border: 1px solid rgba(255,255,255,1);
+.custom-card {{
+    background: var(--card-bg);
+    border-radius: 28px; padding: 2rem 2.5rem;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--card-bdr);
     backdrop-filter: blur(20px);
-}
-.card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; }
-.card-title  { display:flex; align-items:center; gap:20px; }
-.icon-circle {
-    width:65px; height:65px; border-radius:20px;
+}}
+.card-header {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem; }}
+.card-title  {{ display:flex; align-items:center; gap:18px; }}
+.icon-circle {{
+    width:60px; height:60px; border-radius:18px;
     display:flex; align-items:center; justify-content:center;
-    font-size:1.8rem; box-shadow:0 8px 15px rgba(0,0,0,0.08);
-}
-.blue-icon  { background:#3b82f6; color:#fff; }
-.green-icon { background:#10b981; color:#fff; }
-.title-text { font-size:1.6rem; font-weight:800; color:#0f172a; }
-.desc-text  { color:#475569; font-size:1rem; margin-top:0.3rem; }
-.side-emoji { font-size:50px; }
+    font-size:1.7rem; box-shadow:0 8px 15px rgba(0,0,0,0.1); flex-shrink:0;
+}}
+.blue-icon   {{ background:#3b82f6; }}
+.green-icon  {{ background:#10b981; }}
+.purple-icon {{ background:#8b5cf6; }}
+.orange-icon {{ background:#f59e0b; }}
+.title-text  {{ font-size:1.5rem; font-weight:800; color:var(--text-h); }}
+.desc-text   {{ color:var(--text-m); font-size:0.95rem; margin-top:0.25rem; }}
+.side-emoji  {{ font-size:46px; }}
 
 /* ── INPUTS ── */
-.stNumberInput input, .stTextArea textarea {
-    background-color: #f8fafc !important;
-    border: 2px solid #cbd5e1 !important;
-    border-radius: 18px !important;
-    color: #0f172a !important;
-    padding: 1.2rem !important;
-    font-size: 1.05rem !important;
-    font-weight: 600 !important;
-    transition: all 0.3s ease !important;
-}
-.stTextArea textarea { min-height: 250px !important; line-height: 1.8 !important; }
-.stNumberInput input:focus, .stTextArea textarea:focus {
-    border-color: #e73c7e !important;
-    box-shadow: 0 0 0 4px rgba(231,60,126,0.2) !important;
-}
+.stNumberInput input, .stTextArea textarea, .stTextInput input {{
+    background-color: var(--input-bg) !important;
+    border: 2px solid var(--input-bdr) !important;
+    border-radius: 16px !important;
+    color: var(--input-txt) !important;
+    font-size: 1rem !important;
+    font-weight: 500 !important;
+    transition: all 0.25s ease !important;
+}}
+.stTextArea textarea {{
+    min-height: 240px !important;
+    line-height: 1.8 !important;
+    padding: 1rem !important;
+}}
+.stNumberInput input:focus, .stTextArea textarea:focus, .stTextInput input:focus {{
+    border-color: #FF0076 !important;
+    box-shadow: 0 0 0 4px rgba(255,0,118,0.15) !important;
+}}
+div[data-testid="stSelectbox"] > div > div,
+div[data-testid="stDateInput"] > div > div {{
+    background: var(--input-bg) !important;
+    border: 2px solid var(--input-bdr) !important;
+    border-radius: 16px !important;
+    color: var(--input-txt) !important;
+}}
+div[data-testid="stSelectbox"] label,
+div[data-testid="stTextInput"] label,
+div[data-testid="stDateInput"] label,
+div[data-testid="stNumberInput"] label,
+div[data-testid="stTextArea"] label {{
+    color: var(--text-h) !important;
+    font-weight: 700 !important;
+    font-size: 0.8rem !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+}}
+span[data-baseweb="checkbox"] {{ accent-color: #FF0076; }}
 
-/* ── BUTTON ── */
-.stButton > button {
+/* ── MEMBER PREVIEW CHIPS ── */
+.member-chips {{ display:flex; flex-wrap:wrap; gap:10px; margin-top:1rem; }}
+.member-chip {{
+    background: var(--chip-bg);
+    border: 1.5px solid var(--chip-bdr);
+    border-radius: 12px; padding: 0.5rem 1rem;
+    backdrop-filter: blur(8px);
+}}
+.chip-name  {{ font-weight:800; font-size:0.9rem; color:var(--text-h); }}
+.chip-tasks {{ font-size:0.75rem; color:var(--text-m); margin-top:0.1rem; }}
+.chip-block {{ font-size:0.72rem; color:#ef4444; font-weight:700; margin-top:0.15rem; }}
+
+/* ── MAIN BUTTON ── */
+.stButton > button {{
     background: linear-gradient(135deg, #FF0076 0%, #590FB7 100%) !important;
     color: #fff !important; border: none !important;
-    border-radius: 50px !important; padding: 1.2rem 4rem !important;
-    font-size: 1.2rem !important; font-weight: 800 !important;
-    letter-spacing: 1px; display: block; margin: 2.5rem auto;
-    box-shadow: 0 10px 25px rgba(89,15,183,0.4) !important;
+    border-radius: 50px !important; padding: 1rem 4rem !important;
+    font-size: 1.15rem !important; font-weight: 800 !important;
+    letter-spacing: 0.05em; display: block; margin: 2rem auto;
+    box-shadow: 0 10px 28px var(--btn-sh1) !important;
     transition: all 0.3s cubic-bezier(0.4,0,0.2,1) !important;
-}
-.stButton > button:hover {
-    transform: translateY(-5px) scale(1.02);
-    box-shadow: 0 15px 35px rgba(255,0,118,0.5) !important;
-}
+}}
+.stButton > button:hover {{
+    transform: translateY(-4px) scale(1.02) !important;
+    box-shadow: 0 16px 38px rgba(255,0,118,0.5) !important;
+}}
+.stButton > button:active {{ transform: scale(0.97) !important; }}
+.stButton > button:disabled {{
+    opacity: 0.45 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+}}
 
-/* ── ANIMATED LOADER CARD ── */
-@keyframes loaderFadeIn {
-    from { opacity:0; transform:translateY(24px); }
-    to   { opacity:1; transform:translateY(0); }
-}
-@keyframes loaderBounce {
-    0%,100% { transform: translateY(0) scale(1); }
-    40%     { transform: translateY(-14px) scale(1.14); }
-    65%     { transform: translateY(-6px)  scale(1.06); }
-}
-@keyframes shimmer {
-    0%   { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-@keyframes dotPop {
-    from { transform: scale(0.3); opacity:0; }
-    to   { transform: scale(1);   opacity:1; }
-}
-
-.loader-wrap {
-    background: rgba(255,255,255,0.97);
+/* ── LOADER ── */
+@keyframes loaderFadeIn {{
+    from {{ opacity:0; transform:translateY(24px); }}
+    to   {{ opacity:1; transform:translateY(0); }}
+}}
+@keyframes loaderBounce {{
+    0%,100% {{ transform: translateY(0) scale(1); }}
+    40%     {{ transform: translateY(-14px) scale(1.14); }}
+    65%     {{ transform: translateY(-6px) scale(1.06); }}
+}}
+@keyframes shimmer {{
+    0%   {{ background-position: 200% 0; }}
+    100% {{ background-position: -200% 0; }}
+}}
+@keyframes dotPop {{
+    from {{ transform: scale(0.3); opacity:0; }}
+    to   {{ transform: scale(1); opacity:1; }}
+}}
+.loader-wrap {{
     border-radius: 28px; padding: 3rem 2.5rem;
-    text-align: center; max-width: 580px; margin: 2rem auto;
+    text-align: center; max-width: 580px; margin: 1.5rem auto;
     box-shadow: 0 28px 70px rgba(0,0,0,0.25);
     animation: loaderFadeIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
-    border: 1.5px solid rgba(255,255,255,0.9);
-}
-.loader-emoji {
-    font-size: 3.4rem; display: block; margin-bottom: 0.9rem;
-    animation: loaderBounce 1.4s ease-in-out infinite;
-}
-.loader-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.35rem; font-weight: 800;
-    color: #1e1b4b; margin-bottom: 0.35rem;
-}
-.loader-sub {
-    font-size: 0.84rem; color: #6d28d9;
-    font-weight: 600; margin-bottom: 1.6rem;
-}
-.loader-dots {
-    display: flex; justify-content: center;
-    gap: 9px; margin-bottom: 1.5rem;
-}
-.ld {
-    width: 11px; height: 11px; border-radius: 50%;
-    background: #e5e7eb;
-    transition: background 0.3s ease;
-}
-.lactive {
-    background: linear-gradient(135deg, #FF0076, #590FB7);
+    border: 1.5px solid rgba(255,255,255,0.12);
+}}
+.loader-emoji {{ font-size: 3.2rem; display: block; margin-bottom: 0.85rem; animation: loaderBounce 1.4s ease-in-out infinite; }}
+.loader-title {{ font-family:'Syne',sans-serif; font-size:1.3rem; font-weight:800; margin-bottom:0.35rem; }}
+.loader-sub   {{ font-size:0.83rem; font-weight:600; margin-bottom:1.6rem; }}
+.loader-dots  {{ display:flex; justify-content:center; gap:9px; margin-bottom:1.4rem; }}
+.ld {{ width:11px; height:11px; border-radius:50%; background:#e5e7eb; transition:background 0.3s; }}
+.lactive {{
+    background: linear-gradient(135deg,#FF0076,#590FB7);
     animation: dotPop 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
-    box-shadow: 0 0 8px rgba(255,0,118,0.4);
-}
-.ldone { background: #590FB7; }
-
-.loader-bar-bg {
-    height: 7px; border-radius: 99px;
-    background: rgba(89,15,183,0.1);
-    overflow: hidden; margin-bottom: 0.6rem;
-}
-.loader-bar-fg {
-    height: 100%; border-radius: 99px;
-    background: linear-gradient(90deg, #FF0076, #590FB7, #23a6d5, #FF0076);
+    box-shadow: 0 0 10px rgba(255,0,118,0.5);
+}}
+.ldone {{ background:#590FB7; }}
+.loader-bar-bg {{ height:7px; border-radius:99px; background:rgba(89,15,183,0.12); overflow:hidden; margin-bottom:0.55rem; }}
+.loader-bar-fg {{
+    height:100%; border-radius:99px;
+    background: linear-gradient(90deg,#FF0076,#590FB7,#23a6d5,#FF0076);
     background-size: 200% 100%;
     animation: shimmer 1.6s linear infinite;
     transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
-}
-.loader-pct {
-    font-size: 0.8rem; font-weight: 800;
-    color: #590FB7; letter-spacing: 0.06em;
-}
+}}
+.loader-pct {{ font-size:0.78rem; font-weight:800; letter-spacing:0.06em; }}
 
 /* ── OUTPUT BLOCKS ── */
-@keyframes blockReveal {
-    from { opacity:0; transform: translateY(18px); }
-    to   { opacity:1; transform: translateY(0); }
-}
-.colored-block {
-    padding: 2rem; border-radius: 24px; margin-bottom: 2rem;
-    background: #ffffff; box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-    position: relative; overflow: hidden;
+@keyframes blockReveal {{
+    from {{ opacity:0; transform:translateY(18px); }}
+    to   {{ opacity:1; transform:translateY(0); }}
+}}
+.colored-block {{
+    padding: 1.75rem 2rem; border-radius: 24px; margin-bottom: 1.75rem;
+    background: var(--out-bg); box-shadow: 0 10px 30px rgba(0,0,0,0.08);
     animation: blockReveal 0.5s ease both;
-}
-.narrative-block { border-left: 8px solid #4f46e5; background: rgba(79,70,229,0.03); animation-delay: 0.05s; }
-.chat-block      { border-left: 8px solid #ec4899; background: rgba(236,72,153,0.03); animation-delay: 0.15s; }
-.email-block     { border-left: 8px solid #f59e0b; background: rgba(245,158,11,0.03); animation-delay: 0.25s; }
+}}
+.narrative-block {{ border-left:8px solid #4f46e5; background: rgba(79,70,229,0.04); animation-delay:0.05s; }}
+.chat-block      {{ border-left:8px solid #ec4899; background: rgba(236,72,153,0.04); animation-delay:0.12s; }}
+.whatsapp-block  {{ border-left:8px solid #25D366; background: rgba(37,211,102,0.04); animation-delay:0.19s; }}
+.email-block     {{ border-left:8px solid #f59e0b; background: rgba(245,158,11,0.04); animation-delay:0.26s; }}
+.tomorrow-block  {{ border-left:8px solid #06b6d4; background: rgba(6,182,212,0.04);  animation-delay:0.33s; }}
+.blocker-block   {{ border-left:8px solid #ef4444; background: rgba(239,68,68,0.04);   animation-delay:0.40s; }}
 
-.block-title {
-    font-size: 1.4rem; font-weight: 900; margin-bottom: 1.2rem;
-    display: flex; align-items: center; gap: 12px;
-}
-.narrative-title { color: #4f46e5; }
-.chat-title      { color: #db2777; }
-.email-title     { color: #d97706; }
+.block-title {{
+    font-size:1.3rem; font-weight:900; margin-bottom:1rem;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+}}
+.narrative-title {{ color:#4f46e5; }}
+.chat-title      {{ color:#db2777; }}
+.whatsapp-title  {{ color:#128C7E; }}
+.email-title     {{ color:#d97706; }}
+.tomorrow-title  {{ color:#0891b2; }}
+.blocker-title   {{ color:#dc2626; }}
+
+/* ── ACTION BUTTONS ROW ── */
+.action-row {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:0.75rem; }}
+.action-btn {{
+    display:inline-flex; align-items:center; gap:6px;
+    background: rgba(255,255,255,0.12);
+    border: 1.5px solid rgba(255,255,255,0.25);
+    border-radius:999px; padding:0.35rem 1rem;
+    font-size:0.78rem; font-weight:700;
+    color: var(--text-h); text-decoration:none;
+    cursor:pointer; backdrop-filter:blur(8px);
+    transition: all 0.2s;
+}}
+.action-btn:hover {{ background:rgba(255,0,118,0.12); border-color:rgba(255,0,118,0.3); }}
 
 /* ── CODE BLOCKS ── */
-pre {
-    border-radius: 16px !important; background: #fafafa !important;
-    border: 2px solid rgba(0,0,0,0.05) !important; padding: 1.5rem !important;
-    color: #0f172a !important; font-size: 1rem !important;
-    box-shadow: inset 0 4px 10px rgba(0,0,0,0.02) !important;
-}
+pre {{
+    border-radius:16px !important;
+    background: var(--code-bg) !important;
+    border: 1.5px solid rgba(0,0,0,0.06) !important;
+    padding: 1.25rem !important;
+    color: var(--code-txt) !important;
+    font-size: 0.95rem !important;
+    line-height: 1.7 !important;
+}}
+
+/* ── HISTORY ── */
+.hist-card {{
+    background: var(--card-bg);
+    border: 1.5px solid var(--card-bdr);
+    border-radius:18px; padding:1.1rem 1.4rem;
+    margin-bottom:0.85rem;
+    backdrop-filter:blur(12px);
+    display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+}}
+.hist-date {{ font-family:'Syne',sans-serif; font-size:0.95rem; font-weight:800; color:var(--text-h); }}
+.hist-meta {{ font-size:0.76rem; color:var(--text-m); margin-top:0.2rem; }}
+
+/* ── STATS ROW ── */
+.stats-row {{ display:flex; gap:12px; flex-wrap:wrap; margin:1.5rem 0 0; }}
+.stat-chip {{
+    background: var(--chip-bg);
+    border: 1.5px solid var(--chip-bdr);
+    border-radius:14px; padding:0.6rem 1.1rem;
+    backdrop-filter:blur(8px);
+    text-align:center; flex:1; min-width:100px;
+}}
+.stat-val  {{ font-family:'Syne',sans-serif; font-size:1.5rem; font-weight:800; color:var(--text-h); }}
+.stat-lbl  {{ font-size:0.72rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-m); margin-top:0.1rem; }}
 
 /* ── TOKEN BADGE ── */
-.token-badge {
-    text-align: center; margin: 1rem auto 0;
-    background: rgba(255,255,255,0.2);
-    border: 1.5px solid rgba(255,255,255,0.4);
-    border-radius: 999px; padding: 0.5rem 1.6rem;
-    display: inline-block; color: #fff !important;
-    font-weight: 700; font-size: 0.85rem;
-    backdrop-filter: blur(10px);
-    text-shadow: 0 2px 4px rgba(0,0,0,0.15);
-    width: fit-content; display: block;
-}
+.token-row {{ text-align:center; margin:1.5rem 0 0; }}
+.token-badge {{
+    display:inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1.5px solid rgba(255,255,255,0.3);
+    border-radius:999px; padding:0.45rem 1.4rem;
+    color:#fff !important; font-weight:700; font-size:0.84rem;
+    backdrop-filter:blur(10px);
+}}
 
-@media (max-width: 768px) {
-    .main-title  { font-size: 2.8rem; }
-    .title-text  { font-size: 1.3rem; }
-    .side-emoji  { display: none; }
-    .card-header { flex-direction: column; align-items: flex-start; gap: 15px; }
-    .loader-wrap { padding: 2rem 1.25rem; }
-}
+/* ── EXPANDER ── */
+details {{ background:var(--card-bg) !important; border-radius:18px !important;
+    border:1.5px solid var(--card-bdr) !important; padding:0.5rem 1rem !important; margin-bottom:1rem !important; }}
+details summary {{ color:var(--text-h) !important; font-weight:700 !important; cursor:pointer; }}
+
+/* ── RATE LIMIT BANNER ── */
+.rate-banner {{
+    text-align:center; background:rgba(255,0,118,0.1);
+    border:1.5px solid rgba(255,0,118,0.25);
+    border-radius:14px; padding:0.7rem 1.2rem;
+    color: #FF0076; font-weight:700; font-size:0.88rem;
+    margin-bottom:1rem;
+}}
+
+/* ── RESPONSIVE ── */
+@media (max-width:768px) {{
+    .main-title  {{ font-size:2.6rem; }}
+    .title-text  {{ font-size:1.2rem; }}
+    .side-emoji  {{ display:none; }}
+    .card-header {{ flex-direction:column; align-items:flex-start; gap:12px; }}
+    .loader-wrap {{ padding:2rem 1.25rem; }}
+    .stats-row   {{ flex-direction:column; }}
+}}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------
+
+# ═══════════════════════════════════════════════════
+# INIT CSS + DARK TOGGLE
+# ═══════════════════════════════════════════════════
+dark = st.session_state.dark_mode
+inject_css(dark)
+
+top_l, top_r = st.columns([10, 1])
+with top_r:
+    st.markdown('<div class="dm-btn">', unsafe_allow_html=True)
+    if st.button("🌙" if not dark else "☀️", key="dm"):
+        st.session_state.dark_mode = not dark
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════
 # HERO
-# ---------------------------------------------------
+# ═══════════════════════════════════════════════════
 st.markdown("""
 <div class="hero-section">
     <span class="hero-icon">🏛️</span>
     <div class="main-title">Sangha<span>Status</span></div>
     <div class="main-subtitle">
-        A beautifully automated workspace for generating professional standup narratives, chat updates, and daily emails.
+        Professional standup narratives, chat updates, WhatsApp messages &amp; emails — generated in seconds.
     </div>
     <div class="sangha-meaning">
         ✦ Sangha — the Pali word for "community" or "assembly" &nbsp;·&nbsp; Focusing on the Team ✦
@@ -357,33 +591,50 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------
-# TEAM SIZE CARD
-# ---------------------------------------------------
+# ═══════════════════════════════════════════════════
+# CONFIGURATION CARD
+# ═══════════════════════════════════════════════════
 st.markdown("""
 <div class="custom-card">
 <div class="card-header">
 <div class="card-title">
-  <div class="icon-circle blue-icon">👥</div>
+  <div class="icon-circle purple-icon">⚙️</div>
   <div>
-    <div class="title-text">Team Size</div>
-    <div class="desc-text">Select the total number of active team members for today.</div>
+    <div class="title-text">Configuration</div>
+    <div class="desc-text">Set the date, tone, domain, and output language for this standup.</div>
   </div>
 </div>
-<div class="side-emoji">📊</div>
+<div class="side-emoji">🎛️</div>
 </div>
 """, unsafe_allow_html=True)
 
-people_count = st.number_input(
-    "Total active team members today",
-    min_value=1, value=1, step=1,
-    label_visibility="collapsed"
-)
+cfg1, cfg2, cfg3, cfg4 = st.columns(4)
+with cfg1:
+    standup_date = st.date_input(
+        "📅 Standup Date",
+        value=date.today(),
+        help="Pick any past or today's date"
+    )
+with cfg2:
+    tone_choice = st.selectbox("🎨 Tone", options=list(TONE_OPTIONS.keys()), index=1)
+with cfg3:
+    domain_choice = st.selectbox("🏢 Domain", options=list(DOMAIN_OPTIONS.keys()), index=0)
+with cfg4:
+    lang_choice = st.selectbox("🌐 Output Language", options=list(OUTPUT_LANG_OPTIONS.keys()), index=0)
+
+cfg5, cfg6, cfg7 = st.columns(3)
+with cfg5:
+    project_name = st.text_input("📁 Project / Sprint Tag", placeholder="e.g. Phoenix · Sprint 14")
+with cfg6:
+    include_tomorrow = st.checkbox("📅 Include Tomorrow's Plan", value=False)
+with cfg7:
+    include_blockers = st.checkbox("🚧 Highlight Blockers", value=True)
+
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------------------------------------------
+# ═══════════════════════════════════════════════════
 # RAW UPDATES CARD
-# ---------------------------------------------------
+# ═══════════════════════════════════════════════════
 st.markdown("""
 <div class="custom-card">
 <div class="card-header">
@@ -391,7 +642,7 @@ st.markdown("""
   <div class="icon-circle green-icon">📝</div>
   <div>
     <div class="title-text">Raw Updates</div>
-    <div class="desc-text">Paste the raw daily updates from your team below.</div>
+    <div class="desc-text">Paste your team's raw standup notes below. Names are auto-detected.</div>
   </div>
 </div>
 <div class="side-emoji">📋</div>
@@ -401,101 +652,310 @@ st.markdown("""
 raw_updates = st.text_area(
     "Paste team updates below:",
     placeholder="""Alice:
-- Working on API integration.
-- Resolving backend issues.
+- Working on API integration with payment gateway.
+- Resolving backend timeout issues.
+- Tomorrow: complete unit tests.
 
 Bob:
-- Preparing test cases.
-- Resolving deployment pipeline issues.
+- Preparing regression test cases for release.
+- Blocked on UAT environment access from DevOps.
+
+Carol:
+- Deployed hotfix to staging.
+- Reviewing PR for auth module.
 """,
-    label_visibility="collapsed"
+    label_visibility="collapsed",
+    key="raw_input"
 )
+
+# ── Auto-detect members & show preview chips ──
+members = parse_members(raw_updates) if raw_updates.strip() else []
+st.session_state.parsed_members = members
+
+if members:
+    total_tasks    = sum(m["count"] for m in members)
+    total_blockers = sum(len(m["blockers"]) for m in members)
+
+    # Stats row
+    stats_html = f"""
+    <div class="stats-row">
+        <div class="stat-chip"><div class="stat-val">{len(members)}</div><div class="stat-lbl">Members</div></div>
+        <div class="stat-chip"><div class="stat-val">{total_tasks}</div><div class="stat-lbl">Total Tasks</div></div>
+        <div class="stat-chip"><div class="stat-val">{total_blockers}</div><div class="stat-lbl">Blockers</div></div>
+    </div>"""
+    st.markdown(stats_html, unsafe_allow_html=True)
+
+    # Member chips
+    chips_html = '<div class="member-chips">'
+    for m in members:
+        bl = f'<div class="chip-block">⚠️ {len(m["blockers"])} blocker{"s" if len(m["blockers"])>1 else ""}</div>' if m["blockers"] else ""
+        chips_html += f"""
+        <div class="member-chip">
+            <div class="chip-name">{m['name']}</div>
+            <div class="chip-tasks">{m['count']} task{"s" if m['count']!=1 else ""}</div>
+            {bl}
+        </div>"""
+    chips_html += "</div>"
+    st.markdown(chips_html, unsafe_allow_html=True)
+
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------------------------------------------
+# ═══════════════════════════════════════════════════
+# RATE LIMIT CHECK
+# ═══════════════════════════════════════════════════
+now         = time.time()
+cooldown    = RATE_LIMIT_SECS - (now - st.session_state.last_generated)
+in_cooldown = cooldown > 0
+
+if in_cooldown:
+    st.markdown(
+        f'<div class="rate-banner">⏳ Please wait {int(cooldown)+1}s before generating again.</div>',
+        unsafe_allow_html=True
+    )
+
+# ═══════════════════════════════════════════════════
 # GENERATE BUTTON
-# ---------------------------------------------------
-generate = st.button("✨ Generate Professional Status")
+# ═══════════════════════════════════════════════════
+generate = st.button(
+    "✨ Generate Professional Status",
+    disabled=in_cooldown
+)
 
 if generate:
     if not raw_updates.strip():
-        st.warning("⚠️ Please provide raw updates before generating.")
+        st.warning("⚠️ Please paste your team's raw updates first.")
+    elif not members:
+        st.warning("⚠️ Could not detect any team member names. Use 'Name:' format.")
     else:
+        st.session_state.last_generated = time.time()
         total_stages = len(LOADER_STAGES)
         slot = st.empty()
 
-        # Pre-API stages
         for i in range(3):
-            slot.markdown(render_loader(i), unsafe_allow_html=True)
-            time.sleep(0.55)
+            slot.markdown(render_loader(i, dark), unsafe_allow_html=True)
+            time.sleep(0.5)
 
-        # Stage 3 — show while API call runs
-        slot.markdown(render_loader(3), unsafe_allow_html=True)
+        slot.markdown(render_loader(3, dark), unsafe_allow_html=True)
 
         try:
-            current_date = datetime.now().strftime("%B %d, %Y")
+            fmt_date    = standup_date.strftime("%B %d, %Y")
+            project_tag = f" | {project_name}" if project_name.strip() else ""
+            tone_instr  = TONE_OPTIONS[tone_choice]
+            domain_str  = DOMAIN_OPTIONS[domain_choice]
+            lang_str    = OUTPUT_LANG_OPTIONS[lang_choice]
+
             prompt_payload = f"""
-Use this date for all sections: {current_date}
-Team Members: {people_count}
-Updates:
+Use this date for all sections: {fmt_date}
+Project/Sprint: {project_name or "General"}
+Team Members detected: {len(members)} ({', '.join(m['name'] for m in members)})
+
+Raw Updates:
 {raw_updates}
+
+Embed the project tag "{project_tag}" in the chat_update header and email subject line.
 """
+            system_prompt = build_prompt(
+                tone_instr, domain_str, lang_str,
+                include_tomorrow, include_blockers
+            )
+
+            # ── API call ──
             completion = client.chat.completions.create(
                 model="nvidia/llama-3.3-nemotron-super-49b-v1",
                 messages=[
-                    {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user",   "content": prompt_payload}
                 ],
                 temperature=0.1,
-                max_tokens=1500,
+                max_tokens=2000,
                 response_format={"type": "json_object"}
             )
 
-            generated_data = json.loads(completion.choices[0].message.content)
+            data = json.loads(completion.choices[0].message.content)
 
-            # Post-API stages
+            # Walk post-API stages
             for i in range(4, total_stages):
-                slot.markdown(render_loader(i), unsafe_allow_html=True)
-                time.sleep(0.45)
+                slot.markdown(render_loader(i, dark), unsafe_allow_html=True)
+                time.sleep(0.4)
 
-            # Clear loader — reveal results
             slot.empty()
+
+            # Update token counter
+            if hasattr(completion, "usage") and completion.usage:
+                st.session_state.session_tokens += completion.usage.total_tokens
+
+            # ── Save to history ──
+            st.session_state.history.insert(0, {
+                "date":    fmt_date,
+                "project": project_name or "—",
+                "members": len(members),
+                "tasks":   sum(m["count"] for m in members),
+                "tone":    tone_choice,
+                "domain":  domain_choice,
+                "lang":    lang_choice,
+                "data":    data,
+            })
+            st.session_state.history = st.session_state.history[:MAX_HISTORY]
+
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # ── STANDUP NARRATIVE ──
+            # ════════════════════════════════════
+            # STANDUP NARRATIVE
+            # ════════════════════════════════════
+            narrative = data.get("standup_narrative", "")
             st.markdown("""
             <div class="colored-block narrative-block">
-                <div class="block-title narrative-title">🗣️ Standup Narrative</div>
+                <div class="block-title narrative-title">
+                    <span>🗣️ Standup Narrative</span>
+                </div>
             """, unsafe_allow_html=True)
-            st.code(generated_data.get("standup_narrative", "Error generating narrative."), language="text")
+            st.code(narrative, language="text")
             st.markdown("</div>", unsafe_allow_html=True)
 
-            # ── CHAT UPDATE ──
+            # ════════════════════════════════════
+            # CHAT UPDATE
+            # ════════════════════════════════════
+            chat = data.get("chat_update", "")
             st.markdown("""
             <div class="colored-block chat-block">
-                <div class="block-title chat-title">💬 Chat Update</div>
+                <div class="block-title chat-title">
+                    <span>💬 Chat Update (Slack / Teams)</span>
+                </div>
             """, unsafe_allow_html=True)
-            st.code(generated_data.get("chat_update", "Error generating chat update."), language="text")
+            st.code(chat, language="text")
             st.markdown("</div>", unsafe_allow_html=True)
 
-            # ── EMAIL UPDATE ──
+            # ════════════════════════════════════
+            # WHATSAPP UPDATE
+            # ════════════════════════════════════
+            wa = data.get("whatsapp_update", "")
             st.markdown("""
-            <div class="colored-block email-block">
-                <div class="block-title email-title">📧 Email Update</div>
+            <div class="colored-block whatsapp-block">
+                <div class="block-title whatsapp-title">
+                    <span>📱 WhatsApp Update</span>
+                </div>
             """, unsafe_allow_html=True)
-            st.code(generated_data.get("email_update", "Error generating email update."), language="text")
+            st.code(wa, language="text")
             st.markdown("</div>", unsafe_allow_html=True)
 
-            # Token usage
-            if hasattr(completion, "usage") and completion.usage is not None:
-                st.markdown(
-                    f'<div class="token-badge">🛡️ Tokens used this run: {completion.usage.total_tokens:,}</div>',
-                    unsafe_allow_html=True
-                )
+            # ════════════════════════════════════
+            # EMAIL UPDATE + MAILTO LINK
+            # ════════════════════════════════════
+            email_raw = data.get("email_update", "")
+            # Split subject from body for mailto
+            lines      = email_raw.splitlines()
+            subj_line  = next((l for l in lines if l.lower().startswith("subject:")), "")
+            subj       = subj_line.replace("Subject:", "").replace("subject:", "").strip()
+            body_lines = [l for l in lines if l != subj_line]
+            body_text  = "\n".join(body_lines).strip()
+            mailto     = mailto_link(subj, body_text)
+
+            st.markdown(f"""
+            <div class="colored-block email-block">
+                <div class="block-title email-title">
+                    <span>📧 Email Update</span>
+                    <a class="action-btn" href="{mailto}">✉️ Open in Mail App</a>
+                </div>
+            """, unsafe_allow_html=True)
+            st.code(email_raw, language="text")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # ════════════════════════════════════
+            # TOMORROW'S PLAN
+            # ════════════════════════════════════
+            if include_tomorrow and data.get("tomorrow_plan"):
+                st.markdown("""
+                <div class="colored-block tomorrow-block">
+                    <div class="block-title tomorrow-title">📅 Tomorrow's Plan</div>
+                """, unsafe_allow_html=True)
+                st.code(data["tomorrow_plan"], language="text")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # ════════════════════════════════════
+            # BLOCKERS
+            # ════════════════════════════════════
+            if include_blockers and data.get("blocker_summary"):
+                st.markdown("""
+                <div class="colored-block blocker-block">
+                    <div class="block-title blocker-title">🚧 Blockers Summary</div>
+                """, unsafe_allow_html=True)
+                st.code(data["blocker_summary"], language="text")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # ════════════════════════════════════
+            # TOKEN + SESSION STATS
+            # ════════════════════════════════════
+            run_tokens = completion.usage.total_tokens if hasattr(completion, "usage") and completion.usage else 0
+            st.markdown(f"""
+            <div class="token-row">
+                <div class="token-badge">
+                    🛡️ This run: {run_tokens:,} tokens &nbsp;·&nbsp;
+                    Session total: {st.session_state.session_tokens:,} tokens &nbsp;·&nbsp;
+                    Runs saved: {len(st.session_state.history)}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
         except json.JSONDecodeError:
             slot.empty()
-            st.error("❌ The AI did not return a valid JSON format. Please try again.")
+            # Auto-retry once
+            st.warning("⚠️ Malformed response — retrying once…")
+            try:
+                completion2 = client.chat.completions.create(
+                    model="nvidia/llama-3.3-nemotron-super-49b-v1",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user",   "content": prompt_payload}
+                    ],
+                    temperature=0.05,
+                    max_tokens=2000,
+                    response_format={"type": "json_object"}
+                )
+                data2 = json.loads(completion2.choices[0].message.content)
+                st.success("✅ Retry succeeded!")
+                st.code(data2.get("standup_narrative", ""), language="text")
+            except Exception:
+                st.error("❌ Both attempts failed. Please try again.")
         except Exception as e:
             slot.empty()
-            st.error(f"❌ Error generating response: {e}")
+            st.error(f"❌ Error: {e}")
+
+# ═══════════════════════════════════════════════════
+# HISTORY PANEL
+# ═══════════════════════════════════════════════════
+if st.session_state.history:
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander(f"🕘 Past Standups ({len(st.session_state.history)} saved) — click to expand & replay", expanded=False):
+        for idx, entry in enumerate(st.session_state.history):
+            st.markdown(f"""
+            <div class="hist-card">
+                <div>
+                    <div class="hist-date">📅 {entry['date']} &nbsp;·&nbsp; {entry.get('project','—')}</div>
+                    <div class="hist-meta">
+                        👥 {entry['members']} members &nbsp;·&nbsp;
+                        ✅ {entry['tasks']} tasks &nbsp;·&nbsp;
+                        {entry['tone']} &nbsp;·&nbsp; {entry['domain']} &nbsp;·&nbsp; {entry['lang']}
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            with st.expander(f"View outputs — {entry['date']}", expanded=False):
+                d = entry["data"]
+                st.markdown("**🗣️ Narrative**")
+                st.code(d.get("standup_narrative",""), language="text")
+                st.markdown("**💬 Chat**")
+                st.code(d.get("chat_update",""), language="text")
+                st.markdown("**📱 WhatsApp**")
+                st.code(d.get("whatsapp_update",""), language="text")
+                st.markdown("**📧 Email**")
+                st.code(d.get("email_update",""), language="text")
+                if d.get("tomorrow_plan"):
+                    st.markdown("**📅 Tomorrow**")
+                    st.code(d["tomorrow_plan"], language="text")
+                if d.get("blocker_summary"):
+                    st.markdown("**🚧 Blockers**")
+                    st.code(d["blocker_summary"], language="text")
+
+        if st.button("🗑️ Clear all history", key="clear_hist"):
+            st.session_state.history = []
+            st.rerun()
