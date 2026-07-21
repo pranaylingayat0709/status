@@ -290,6 +290,10 @@ body:has(#dmchk:checked) .dm-label::after { content:'☀️'; transform:translat
     font-size:1rem !important; font-weight:500 !important; transition:all 0.25s ease !important;
 }
 .stTextArea textarea { min-height:230px !important; line-height:1.8 !important; padding:1rem !important; }
+.stTextArea textarea::placeholder, .stTextInput input::placeholder {
+    color:var(--text-m) !important;
+    opacity:0.75 !important;
+}
 .stTextArea textarea:focus, .stTextInput input:focus {
     border-color:#FF0076 !important; box-shadow:0 0 0 4px rgba(255,0,118,0.15) !important;
 }
@@ -374,6 +378,64 @@ div[data-testid="stDateInput"] label, div[data-testid="stTextArea"] label {
 }
 .stButton > button:hover { transform:translateY(-4px) scale(1.02) !important; box-shadow:0 18px 42px rgba(255,0,118,0.5) !important; }
 .stButton > button:active { transform:scale(0.97) !important; }
+
+/* ── PILL LABEL (section heading above button-pill groups) ── */
+.pill-label {
+    color:var(--text-h) !important; font-weight:700 !important; font-size:0.8rem !important;
+    letter-spacing:0.06em !important; text-transform:uppercase !important; margin:0.3rem 0 0.5rem;
+}
+
+/* ── BUTTON-BASED PILL GROUPS — Tone / Domain / Output Language.
+   st.selectbox's closed-state text resisted every CSS override attempted
+   in dark mode (BaseWeb internals), so these three fields use st.button
+   pills instead — a widget proven to render text correctly in both
+   themes. Selection is signalled two ways: a "✓ " prefix in the button's
+   own text (plain text, cannot fail to render), and a hidden marker div
+   placed immediately before the selected button, targeted via a plain
+   adjacent-sibling CSS selector — this avoids depending on Streamlit's
+   internal primary/secondary "kind" attribute, which isn't reliably
+   exposed in this Streamlit build. ── */
+.pill-scope-tone, .pill-scope-domain, .pill-scope-lang, .pill-selected-marker { height:0; margin:0; padding:0; }
+
+.pill-scope-tone ~ div[data-testid="stHorizontalBlock"]:first-of-type button,
+.pill-scope-domain ~ div[data-testid="stHorizontalBlock"]:first-of-type button,
+.pill-scope-lang ~ div[data-testid="stHorizontalBlock"]:first-of-type button {
+    border-radius:12px !important;
+    padding:0.45rem 0.5rem !important;
+    font-size:0.78rem !important;
+    font-weight:600 !important;
+    white-space:normal !important;
+    line-height:1.3 !important;
+    min-height:2.4rem !important;
+    box-shadow:none !important;
+    transform:none !important;
+    margin:0.2rem 0 !important;
+    letter-spacing:0.02em !important;
+}
+.pill-scope-tone ~ div[data-testid="stHorizontalBlock"]:first-of-type button:hover,
+.pill-scope-domain ~ div[data-testid="stHorizontalBlock"]:first-of-type button:hover,
+.pill-scope-lang ~ div[data-testid="stHorizontalBlock"]:first-of-type button:hover {
+    transform:translateY(-1px) !important;
+}
+/* Default (unselected) pill — plain themed box + normal text color, unconditionally */
+.pill-scope-tone ~ div[data-testid="stHorizontalBlock"]:first-of-type button,
+.pill-scope-tone ~ div[data-testid="stHorizontalBlock"]:first-of-type button *,
+.pill-scope-domain ~ div[data-testid="stHorizontalBlock"]:first-of-type button,
+.pill-scope-domain ~ div[data-testid="stHorizontalBlock"]:first-of-type button *,
+.pill-scope-lang ~ div[data-testid="stHorizontalBlock"]:first-of-type button,
+.pill-scope-lang ~ div[data-testid="stHorizontalBlock"]:first-of-type button * {
+    background:var(--input-bg) !important;
+    color:var(--input-txt) !important;
+    border:1.5px solid var(--input-bdr) !important;
+}
+/* Selected pill — targeted via the marker placed right before it */
+.pill-selected-marker + div[data-testid="stButton"] button,
+.pill-selected-marker + div[data-testid="stButton"] button * {
+    background:linear-gradient(135deg,#FF0076,#590FB7) !important;
+    color:#FFFFFF !important;
+    border:none !important;
+    font-weight:800 !important;
+}
 
 /* ── LOADER ── */
 @keyframes loaderFadeIn { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
@@ -516,15 +578,44 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-cfg1, cfg2, cfg3, cfg4 = st.columns(4)
+def pill_grid(options, state_key, key_prefix, scope_class, per_row=3, default_index=0):
+    """
+    Renders `options` as equal-size button pills, wrapped into rows of
+    `per_row`. Selection is signalled via a "✓ " prefix in the button's
+    own text (always visible) plus a marker div before the selected
+    button that CSS highlights with the gradient — see the scoped CSS
+    rules for .pill-scope-*.
+    """
+    if state_key not in st.session_state:
+        st.session_state[state_key] = options[default_index]
+    st.markdown(f'<div class="{scope_class}"></div>', unsafe_allow_html=True)
+    for row_start in range(0, len(options), per_row):
+        row_opts = options[row_start:row_start + per_row]
+        cols = st.columns(per_row)
+        for i, opt in enumerate(row_opts):
+            with cols[i]:
+                is_sel = st.session_state[state_key] == opt
+                label = f"✓ {opt}" if is_sel else opt
+                if is_sel:
+                    st.markdown('<div class="pill-selected-marker"></div>', unsafe_allow_html=True)
+                if st.button(label, key=f"{key_prefix}_{row_start + i}", use_container_width=True):
+                    st.session_state[state_key] = opt
+                    st.rerun()
+    return st.session_state[state_key]
+
+
+cfg1, cfg_date_spacer = st.columns([1, 2])
 with cfg1:
     standup_date = st.date_input("📅 Standup Date", value=date.today(), key="pref_date")
-with cfg2:
-    tone_choice = st.selectbox("🎨 Tone", options=list(TONE_OPTIONS.keys()), index=1, key="pref_tone")
-with cfg3:
-    domain_choice = st.selectbox("🏢 Domain", options=list(DOMAIN_OPTIONS.keys()), index=0, key="pref_domain")
-with cfg4:
-    lang_choice = st.selectbox("🌐 Output Language", options=list(OUTPUT_LANG_OPTIONS.keys()), index=0, key="pref_lang")
+
+st.markdown('<div class="pill-label">🎨 Tone</div>', unsafe_allow_html=True)
+tone_choice = pill_grid(list(TONE_OPTIONS.keys()), "sel_tone", "tone_btn", "pill-scope-tone", per_row=3, default_index=1)
+
+st.markdown('<div class="pill-label">🏢 Domain</div>', unsafe_allow_html=True)
+domain_choice = pill_grid(list(DOMAIN_OPTIONS.keys()), "sel_domain", "domain_btn", "pill-scope-domain", per_row=4)
+
+st.markdown('<div class="pill-label">🌐 Output Language</div>', unsafe_allow_html=True)
+lang_choice = pill_grid(list(OUTPUT_LANG_OPTIONS.keys()), "sel_lang", "lang_btn", "pill-scope-lang", per_row=3)
 
 cfg5, cfg6, cfg7 = st.columns(3)
 with cfg5:
