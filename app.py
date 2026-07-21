@@ -51,12 +51,14 @@ TONE_OPTIONS = {
     "⚡ Concise":     "Use short, punchy one-line bullets. Be brief and direct.",
 }
 DOMAIN_OPTIONS = {
-    "💻 Software Dev": "software development",
-    "🧪 QA / Testing": "quality assurance and testing",
-    "🚀 DevOps":       "DevOps and infrastructure",
-    "🎨 Design / UX":  "UI/UX design",
-    "📦 Product":      "product management",
-    "💰 Finance":      "financial operations",
+    "💻 Software Dev":        "software development",
+    "🧪 QA / Testing":        "quality assurance and testing",
+    "🚀 DevOps":              "DevOps and infrastructure",
+    "🎨 Design / UX":         "UI/UX design",
+    "📦 Product":             "product management",
+    "💰 Finance":             "financial operations",
+    "🧩 Functional Team":     "functional / business operations (process coordination, stakeholder requirements, cross-functional workflows, and operational execution)",
+    "🧑‍🤝‍🧑 Human Resource Team": "Human Resources (recruitment, onboarding, employee relations, policy compliance, performance management, and engagement initiatives)",
 }
 OUTPUT_LANG_OPTIONS = {
     "🇬🇧 English": "English",
@@ -133,9 +135,17 @@ def build_prompt(tone, domain, lang, include_tomorrow, include_blockers):
         if include_blockers else ""
     )
     return f"""
-You are SanghaStatus, a precise professional assistant for engineering teams.
+You are SanghaStatus, a precise professional assistant for workplace teams.
 
 DOMAIN CONTEXT: You are writing updates for a {domain} team.
+Use vocabulary, phrasing, and framing natural to this domain. For example:
+- Software Dev / QA / DevOps: use terms like "deployed", "resolved", "tested", "merged", "pipeline", "sprint".
+- Functional Team: use terms like "coordinated", "aligned with stakeholders", "processed", "escalated", "streamlined workflow", "operational milestone".
+- Human Resource Team: use terms like "onboarded", "screened candidates", "conducted interviews", "policy rollout", "employee engagement", "performance review", "grievance resolved" — and NEVER use software/technical jargon (no "deployed", "bug", "sprint", etc.) unless the raw input explicitly mentions it.
+- Finance: use terms like "reconciled", "audited", "processed invoices", "forecasted", "budget review".
+- Design/UX: use terms like "prototyped", "wireframed", "user tested", "iterated on design".
+Always stay faithful to what the raw input actually says — domain vocabulary should make the phrasing natural, not invent activities that didn't happen.
+
 TONE: {tone}
 OUTPUT LANGUAGE: Write ALL output fields in {lang}.
 
@@ -489,7 +499,7 @@ st.markdown(
     '<div class="card-header"><div class="card-title">'
     '<div class="icon-circle green-icon">📝</div>'
     '<div><div class="title-text">Raw Updates</div>'
-    '<div class="desc-text">Paste your team\'s raw standup notes below. Names are auto-detected.</div></div>'
+    '<div class="desc-text">Paste your team\'s raw notes below — works for engineering, functional, or HR teams. Names are auto-detected.</div></div>'
     '</div><div class="side-emoji">📋</div></div>',
     unsafe_allow_html=True
 )
