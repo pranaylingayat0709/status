@@ -182,9 +182,6 @@ CSS = """
     --card-bg:rgba(255,255,255,0.96); --card-bdr:rgba(255,255,255,1);
     --text-h:#0f172a; --text-b:#1e293b; --text-m:#475569;
     --input-bg:#f8fafc; --input-bdr:#cbd5e1; --input-txt:#0f172a;
-    /* Inverted colors for dropdown/select widgets — dark box + light text in light theme,
-       so we never depend on overriding BaseWeb's own internal text color. */
-    --field-bg:#1B1730; --field-txt:#F5F3FF; --field-bdr:rgba(255,255,255,0.2);
     --btn-sh1:rgba(89,15,183,0.4);
     --out-bg:#ffffff; --code-bg:#fafafa; --code-txt:#0f172a;
     --chip-bg:rgba(255,255,255,0.7); --chip-bdr:rgba(0,0,0,0.08);
@@ -195,8 +192,6 @@ body:has(#dmchk:checked) {
     --card-bg:rgba(15,23,42,0.92); --card-bdr:rgba(255,255,255,0.08);
     --text-h:#F1F5F9; --text-b:#CBD5E1; --text-m:#94A3B8;
     --input-bg:rgba(15,23,42,0.95); --input-bdr:rgba(255,0,118,0.35); --input-txt:#F1F5F9;
-    /* Inverted colors for dropdown/select widgets — light box + dark text in dark theme. */
-    --field-bg:#FFFFFF; --field-txt:#1E1535; --field-bdr:rgba(0,0,0,0.15);
     --btn-sh1:rgba(255,0,118,0.35);
     --out-bg:rgba(15,23,42,0.9); --code-bg:#0f172a; --code-txt:#E2E8F0;
     --chip-bg:rgba(255,255,255,0.06); --chip-bdr:rgba(255,255,255,0.1);
@@ -298,37 +293,47 @@ body:has(#dmchk:checked) .dm-label::after { content:'☀️'; transform:translat
 .stTextArea textarea:focus, .stTextInput input:focus {
     border-color:#FF0076 !important; box-shadow:0 0 0 4px rgba(255,0,118,0.15) !important;
 }
+/* Box background/border kept exactly as before — only fixing text color so it's
+   readable: light box (light theme) gets dark text, dark box (dark theme) gets light text. */
 div[data-testid="stSelectbox"] > div > div, div[data-testid="stDateInput"] > div > div {
-    background:var(--field-bg) !important; border:2px solid var(--field-bdr) !important;
-    border-radius:16px !important; color:var(--field-txt) !important;
+    background:var(--input-bg) !important; border:2px solid var(--input-bdr) !important;
+    border-radius:16px !important;
 }
-/* Selected value text inside the closed selectbox/date-input — using INVERTED colors
-   (dark box + light text in light theme, light box + dark text in dark theme) so
-   contrast is guaranteed regardless of how BaseWeb renders its internal spans. */
-div[data-testid="stSelectbox"] div[data-baseweb="select"] *,
+/* Comprehensive text-color override — targets every possible nested node BaseWeb
+   might render the value/placeholder text in. */
+div[data-testid="stSelectbox"] div[data-baseweb="select"],
+div[data-testid="stSelectbox"] div[data-baseweb="select"] div,
+div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+div[data-testid="stSelectbox"] div[data-baseweb="select"] input,
+div[data-testid="stSelectbox"] div[data-baseweb="select"] p,
 div[data-testid="stDateInput"] input {
-    color:var(--field-txt) !important;
-    -webkit-text-fill-color:var(--field-txt) !important;
+    color:var(--input-txt) !important;
+    -webkit-text-fill-color:var(--input-txt) !important;
 }
+div[data-testid="stSelectbox"] div[aria-disabled="true"],
 div[data-testid="stSelectbox"] div[aria-disabled="true"] * {
-    color:var(--field-txt) !important;
-    opacity:0.85 !important;
-    -webkit-text-fill-color:var(--field-txt) !important;
+    color:var(--input-txt) !important;
+    opacity:0.9 !important;
+    -webkit-text-fill-color:var(--input-txt) !important;
 }
 /* The dropdown OPTIONS LIST is rendered in a portal appended to <body>, so it must be
-   themed globally — also using inverted field colors. */
+   themed globally, matched to the same theme colors. */
 div[data-baseweb="popover"] ul,
 div[data-baseweb="menu"] {
-    background:var(--field-bg) !important;
-    border:1.5px solid var(--field-bdr) !important;
+    background:var(--input-bg) !important;
+    border:1.5px solid var(--input-bdr) !important;
     border-radius:12px !important;
 }
 div[data-baseweb="popover"] li,
 div[data-baseweb="menu"] li,
+div[data-baseweb="popover"] li *,
+div[data-baseweb="menu"] li *,
 div[data-baseweb="popover"] [role="option"],
-div[data-baseweb="menu"] [role="option"] {
-    color:var(--field-txt) !important;
-    -webkit-text-fill-color:var(--field-txt) !important;
+div[data-baseweb="menu"] [role="option"],
+div[data-baseweb="popover"] [role="option"] *,
+div[data-baseweb="menu"] [role="option"] * {
+    color:var(--input-txt) !important;
+    -webkit-text-fill-color:var(--input-txt) !important;
     background:transparent !important;
 }
 div[data-baseweb="popover"] li:hover,
