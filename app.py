@@ -3,6 +3,7 @@ import json
 import re
 import hashlib
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from openai import OpenAI
 
@@ -125,15 +126,70 @@ def render_loader(stage_idx: int) -> str:
 # ═══════════════════════════════════════════════════
 # SYSTEM PROMPT
 # ═══════════════════════════════════════════════════
-def build_prompt(tone, domain, lang, include_tomorrow, include_blockers):
-    tomorrow_key = (
-        '"tomorrow_plan": "Good morning, everyone.\\n\\n[Name 1] plans to [tomorrow task].\\n[Name 2] plans to [tomorrow task].\\n\\nThat concludes the plan for tomorrow.",'
-        if include_tomorrow else ""
+def extract_json_object(raw: str) -> dict:
+    """
+    Robustly parse a JSON object from an LLM response. Some models
+    (e.g. reasoning models like Nemotron 3.5 Lightning) prepend a
+    <think>...</think> block before the actual JSON, or wrap the JSON
+    in markdown code fences — both of which break a plain json.loads.
+    This strips those, then extracts the {...} substring before parsing.
+    """
+    s = raw.strip()
+
+    # Strip a <think>...</think> block if present (even if unterminated —
+    # in that case drop everything up to the last </think> or, if there's
+    # no closing tag at all, take everything after the LAST '}' as a
+    # fallback isn't reliable, so just remove the tag pair when found).
+    s = re.sub(r'<think>.*?</think>', '', s, flags=re.DOTALL)
+    s = re.sub(r'^.*?</think>', '', s, count=1, flags=re.DOTALL)  # unterminated opening tag case
+
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    s = re.sub(r'^```(?:json)?\s*', '', s.strip())
+    s = re.sub(r'```\s*$', '', s.strip())
+
+    s = s.strip()
+
+    # Extract the outermost {...} in case there's any leftover stray text
+    start = s.find('{')
+    end = s.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        s = s[start:end + 1]
+
+    return json.loads(s)
+
+
+def call_llm_json(system_prompt: str, user_prompt: str, temperature: float, max_tokens: int):
+    """
+    Calls the LLM and returns the parsed JSON dict. Tries to disable the
+    model's reasoning/thinking mode via extra_body first (Nemotron 3.5
+    Lightning is a hybrid reasoning model that can otherwise prepend a
+    <think>...</think> block before the JSON); if the server rejects that
+    parameter, retries once without it. extract_json_object() strips any
+    leftover <think> block regardless, as a safety net either way.
+    """
+    kwargs = dict(
+        model="nvidia/nemotron-3.5-lightning-30b-a3b",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format={"type": "json_object"},
     )
-    blocker_key = (
-        '"blocker_summary": "Blockers identified today:\\n\\n[Name]: [Blocker detail].\\n(Write \\"No blockers reported today.\\" if none)",'
-        if include_blockers else ""
-    )
+    try:
+        completion = client.chat.completions.create(
+            **kwargs, extra_body={"chat_template_kwargs": {"thinking": False}}
+        )
+    except Exception:
+        completion = client.chat.completions.create(**kwargs)
+
+    data = extract_json_object(completion.choices[0].message.content)
+    return data, completion
+
+
+def _shared_instructions(tone: str, domain: str, lang: str) -> str:
+    """Common domain/tone/language framing reused by all three split prompts."""
     return f"""
 You are SanghaStatus, a precise professional assistant for workplace teams.
 
@@ -152,21 +208,56 @@ OUTPUT LANGUAGE: Write ALL output fields in {lang}.
 STRICT RULES:
 - TRANSFORM raw inputs — never copy-paste. Rewrite every phrase into a full professional sentence.
 - Each raw task stays as its own separate bullet. Do NOT merge tasks.
-- Use hyphen "-" for bullets in chat_update and email_update. Never asterisks.
 - Keep each person's updates strictly separated under their name.
 - Use correct pronouns inferred from context, or use their name if unclear.
 - NO introductory or concluding conversational text in the JSON values.
 - Return ONLY a valid JSON object — no markdown fences, no preamble.
+- Do NOT include any reasoning, chain-of-thought, or <think> tags of any kind in your response — output ONLY the raw JSON object and nothing else, starting with {{ and ending with }}.
+"""
 
+
+def build_narrative_prompt(tone, domain, lang, include_tomorrow, include_blockers):
+    """Narrative-family output: the spoken standup, tomorrow's plan, blockers.
+    Split out so it can run in parallel with the chat/email prompts below."""
+    tomorrow_key = (
+        ',\n  "tomorrow_plan": "Good morning, everyone.\\n\\n[Name 1] plans to [tomorrow task].\\n[Name 2] plans to [tomorrow task].\\n\\nThat concludes the plan for tomorrow."'
+        if include_tomorrow else ""
+    )
+    blocker_key = (
+        ',\n  "blocker_summary": "Blockers identified today:\\n\\n[Name]: [Blocker detail].\\n(Write \\"No blockers reported today.\\" if none)"'
+        if include_blockers else ""
+    )
+    return _shared_instructions(tone, domain, lang) + f"""
 Return a JSON object with EXACTLY these keys:
 {{
-  "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Date].\\n\\n[Name 1]: [narrative].\\n\\n[Name 2]: [narrative].\\n\\nThat concludes today's status update.",
-  {tomorrow_key}
-  {blocker_key}
-  "chat_update": "Daily Project Status Update | [Date]\\n\\n• [Name 1]\\n- [Task 1 sentence].\\n- [Task 2 sentence].\\n\\n• [Name 2]\\n- [Task 1 sentence].",
-  "whatsapp_update": "📋 *Daily Status Update | [Date]*\\n\\n*[Name 1]*\\n- [Task 1].\\n\\n*[Name 2]*\\n- [Task 1].",
-  "email_update": "Subject: Daily Project Status Update | [Date]\\n\\nDear Team,\\n\\nPlease find below the status update for [Date].\\n\\n[Name 1]\\n- [Task 1].\\n\\n[Name 2]\\n- [Task 1].\\n\\nKindly revert in case of any queries.\\n\\nRegards,\\n[Team Lead Name]"
+  "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Date].\\n\\n[Name 1]: [narrative].\\n\\n[Name 2]: [narrative].\\n\\nThat concludes today's status update."{tomorrow_key}{blocker_key}
 }}
+"""
+
+
+def build_chat_prompt(tone, domain, lang):
+    """Chat-family output: Slack/Teams update + WhatsApp update.
+    Runs in parallel with the narrative and email prompts."""
+    return _shared_instructions(tone, domain, lang) + """
+Use hyphen "-" for bullets. Never asterisks in chat_update (WhatsApp update may use *bold* for names).
+
+Return a JSON object with EXACTLY these keys:
+{
+  "chat_update": "Daily Project Status Update | [Date]\\n\\n• [Name 1]\\n- [Task 1 sentence].\\n- [Task 2 sentence].\\n\\n• [Name 2]\\n- [Task 1 sentence].",
+  "whatsapp_update": "📋 *Daily Status Update | [Date]*\\n\\n*[Name 1]*\\n- [Task 1].\\n\\n*[Name 2]*\\n- [Task 1]."
+}
+"""
+
+
+def build_email_prompt(tone, domain, lang):
+    """Email-family output. Runs in parallel with the narrative and chat prompts."""
+    return _shared_instructions(tone, domain, lang) + """
+Use hyphen "-" for bullets. Never asterisks.
+
+Return a JSON object with EXACTLY this key:
+{
+  "email_update": "Subject: Daily Project Status Update | [Date]\\n\\nDear Team,\\n\\nPlease find below the status update for [Date].\\n\\n[Name 1]\\n- [Task 1].\\n\\n[Name 2]\\n- [Task 1].\\n\\nKindly revert in case of any queries.\\n\\nRegards,\\n[Team Lead Name]"
+}
 """
 
 
@@ -657,27 +748,32 @@ Raw Updates:
 
 Embed the project tag "{project_tag}" in the chat_update header and email subject line.
 """
-            system_prompt = build_prompt(tone_instr, domain_str, lang_str, include_tomorrow, include_blockers)
+            narrative_prompt = build_narrative_prompt(tone_instr, domain_str, lang_str, include_tomorrow, include_blockers)
+            chat_prompt       = build_chat_prompt(tone_instr, domain_str, lang_str)
+            email_prompt      = build_email_prompt(tone_instr, domain_str, lang_str)
 
             slot.markdown(render_loader(1), unsafe_allow_html=True)
 
-            completion = client.chat.completions.create(
-                model="nvidia/nemotron-3.5-lightning-30b-a3b",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": prompt_payload}
-                ],
-                temperature=0.1,
-                max_tokens=2000,
-                response_format={"type": "json_object"}
-            )
+            # ── THREE INDEPENDENT CALLS IN PARALLEL ──
+            # Narrative, chat/WhatsApp, and email don't depend on each other,
+            # so firing them concurrently cuts total wait time to roughly the
+            # slowest single call instead of the sum of all three.
+            total_tokens_used = 0
+            with ThreadPoolExecutor(max_workers=3) as ex:
+                fut_narrative = ex.submit(call_llm_json, narrative_prompt, prompt_payload, 0.1, 900)
+                fut_chat      = ex.submit(call_llm_json, chat_prompt, prompt_payload, 0.1, 900)
+                fut_email     = ex.submit(call_llm_json, email_prompt, prompt_payload, 0.1, 700)
 
-            data = json.loads(completion.choices[0].message.content)
+                data = {}
+                for fut in (fut_narrative, fut_chat, fut_email):
+                    piece, completion = fut.result()
+                    data.update(piece)
+                    if hasattr(completion, "usage") and completion.usage:
+                        total_tokens_used += completion.usage.total_tokens
 
             slot.markdown(render_loader(2), unsafe_allow_html=True)
 
-            if hasattr(completion, "usage") and completion.usage:
-                st.session_state.session_tokens += completion.usage.total_tokens
+            st.session_state.session_tokens += total_tokens_used
 
             st.session_state.history.insert(0, {
                 "date": fmt_date, "project": project_name or "—",
@@ -761,7 +857,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
 
             st.markdown("</div>", unsafe_allow_html=True)  # close output-grid
 
-            run_tokens = completion.usage.total_tokens if hasattr(completion, "usage") and completion.usage else 0
+            run_tokens = total_tokens_used
             st.markdown(
                 f'<div class="token-row"><div class="token-badge">'
                 f'🛡️ This run: {run_tokens:,} tokens &nbsp;·&nbsp; '
@@ -774,17 +870,14 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             slot.empty()
             st.warning("⚠️ Malformed response — retrying once…")
             try:
-                completion2 = client.chat.completions.create(
-                    model="nvidia/nemotron-3.5-lightning-30b-a3b",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user",   "content": prompt_payload}
-                    ],
-                    temperature=0.05,
-                    max_tokens=2000,
-                    response_format={"type": "json_object"}
-                )
-                data2 = json.loads(completion2.choices[0].message.content)
+                with ThreadPoolExecutor(max_workers=3) as ex:
+                    fut_n = ex.submit(call_llm_json, narrative_prompt, prompt_payload, 0.05, 900)
+                    fut_c = ex.submit(call_llm_json, chat_prompt, prompt_payload, 0.05, 900)
+                    fut_e = ex.submit(call_llm_json, email_prompt, prompt_payload, 0.05, 700)
+                    data2 = {}
+                    for fut in (fut_n, fut_c, fut_e):
+                        piece, _ = fut.result()
+                        data2.update(piece)
                 st.success("✅ Retry succeeded!")
                 st.code(data2.get("standup_narrative", ""), language="text")
             except Exception:
