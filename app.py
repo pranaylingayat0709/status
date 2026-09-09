@@ -206,8 +206,13 @@ TONE: {tone}
 OUTPUT LANGUAGE: Write ALL output fields in {lang}.
 
 STRICT RULES:
-- TRANSFORM raw inputs — never copy-paste. Rewrite every phrase into a full professional sentence.
-- Each raw task stays as its own separate bullet. Do NOT merge tasks.
+- TRANSFORM RAW INPUTS: DO NOT just copy-paste the raw bullet points. You MUST rewrite and expand every single short phrase into a full, professional, action-oriented sentence ending with a period.
+  * Bad: "- Support for testing activities"
+  * Good: "- Provided support for testing activities, ensuring test coverage stayed on track."
+  * Bad: "- working on masking"
+  * Good: "- Currently working on implementing masking enhancements."
+- Every single bullet — including the LAST one in a person's list — must be fully rewritten this way. Do not leave any bullet as a bare noun phrase or fragment from the raw input; every bullet must start with a past- or present-tense action verb.
+- Each raw task stays as its own separate bullet. Do NOT merge tasks or summarize multiple tasks into one.
 - Keep each person's updates strictly separated under their name.
 - Use correct pronouns inferred from context, or use their name if unclear.
 - NO introductory or concluding conversational text in the JSON values.
@@ -241,11 +246,12 @@ def build_chat_prompt(tone, domain, lang):
     Runs in parallel with the narrative and email prompts."""
     return _shared_instructions(tone, domain, lang) + """
 Use hyphen "-" for bullets. Never asterisks in chat_update (WhatsApp update may use *bold* for names).
+IMPORTANT: each person's name/header appears ONLY ONCE, with ALL of their tasks listed as bullets underneath it — never repeat a person's name header for each separate task.
 
 Return a JSON object with EXACTLY these keys:
 {
   "chat_update": "Daily Project Status Update | [Date]\\n\\n• [Name 1]\\n- [Task 1 sentence].\\n- [Task 2 sentence].\\n\\n• [Name 2]\\n- [Task 1 sentence].",
-  "whatsapp_update": "📋 *Daily Status Update | [Date]*\\n\\n*[Name 1]*\\n- [Task 1].\\n\\n*[Name 2]*\\n- [Task 1]."
+  "whatsapp_update": "📋 *Daily Status Update | [Date]*\\n\\n*[Name 1]*\\n- [Task 1 sentence].\\n- [Task 2 sentence].\\n\\n*[Name 2]*\\n- [Task 1 sentence]."
 }
 """
 
