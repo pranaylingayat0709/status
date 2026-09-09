@@ -213,6 +213,7 @@ STRICT RULES:
 - NO introductory or concluding conversational text in the JSON values.
 - Return ONLY a valid JSON object — no markdown fences, no preamble.
 - Do NOT include any reasoning, chain-of-thought, or <think> tags of any kind in your response — output ONLY the raw JSON object and nothing else, starting with {{ and ending with }}.
+- Every sentence must be grammatically complete — never truncate or cut a sentence short partway through.
 """
 
 
@@ -760,9 +761,9 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             # slowest single call instead of the sum of all three.
             total_tokens_used = 0
             with ThreadPoolExecutor(max_workers=3) as ex:
-                fut_narrative = ex.submit(call_llm_json, narrative_prompt, prompt_payload, 0.1, 900)
-                fut_chat      = ex.submit(call_llm_json, chat_prompt, prompt_payload, 0.1, 900)
-                fut_email     = ex.submit(call_llm_json, email_prompt, prompt_payload, 0.1, 700)
+                fut_narrative = ex.submit(call_llm_json, narrative_prompt, prompt_payload, 0.1, 1600)
+                fut_chat      = ex.submit(call_llm_json, chat_prompt, prompt_payload, 0.1, 1400)
+                fut_email     = ex.submit(call_llm_json, email_prompt, prompt_payload, 0.1, 1200)
 
                 data = {}
                 for fut in (fut_narrative, fut_chat, fut_email):
@@ -871,9 +872,9 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             st.warning("⚠️ Malformed response — retrying once…")
             try:
                 with ThreadPoolExecutor(max_workers=3) as ex:
-                    fut_n = ex.submit(call_llm_json, narrative_prompt, prompt_payload, 0.05, 900)
-                    fut_c = ex.submit(call_llm_json, chat_prompt, prompt_payload, 0.05, 900)
-                    fut_e = ex.submit(call_llm_json, email_prompt, prompt_payload, 0.05, 700)
+                    fut_n = ex.submit(call_llm_json, narrative_prompt, prompt_payload, 0.05, 1600)
+                    fut_c = ex.submit(call_llm_json, chat_prompt, prompt_payload, 0.05, 1400)
+                    fut_e = ex.submit(call_llm_json, email_prompt, prompt_payload, 0.05, 1200)
                     data2 = {}
                     for fut in (fut_n, fut_c, fut_e):
                         piece, _ = fut.result()
