@@ -247,6 +247,7 @@ def build_chat_prompt(tone, domain, lang):
     return _shared_instructions(tone, domain, lang) + """
 Use hyphen "-" for bullets. Never asterisks in chat_update (WhatsApp update may use *bold* for names).
 IMPORTANT: each person's name/header appears ONLY ONCE, with ALL of their tasks listed as bullets underneath it — never repeat a person's name header for each separate task.
+REMINDER — REWRITE, DO NOT COPY: every bullet must be your own rewritten, full sentence — never the raw input text with only capitalization/punctuation fixed.
 
 Return a JSON object with EXACTLY these keys:
 {
@@ -261,9 +262,22 @@ def build_email_prompt(tone, domain, lang):
     return _shared_instructions(tone, domain, lang) + """
 Use hyphen "-" for bullets. Never asterisks.
 
+REMINDER — REWRITE, DO NOT COPY: The bullets under [Task 1], [Task 2] etc. must be your OWN
+rewritten, full, professional sentences — never the raw input text verbatim, even with minor
+punctuation fixes. If a raw line reads "-Worked on the Data migration activity", the email
+bullet must be substantively rewritten (e.g. "- Led the data migration effort, ensuring a
+smooth transition of records.") — not simply recapitalized and given a period. Every bullet in
+the email must sound like it came from a professional writer, not a copy-paste of the input.
+
+SIGN-OFF RULE: The email is being SENT ABOUT the team members listed, not BY one of them —
+never sign the closing with any of the team members' own names, since that would make it
+look like a team member is reporting on themselves to the team. Always close with a generic
+sign-off that names no individual, exactly: "Regards,\\nProject Team" — do not substitute any
+person's name here under any circumstances, even if only one team member was mentioned.
+
 Return a JSON object with EXACTLY this key:
 {
-  "email_update": "Subject: Daily Project Status Update | [Date]\\n\\nDear Team,\\n\\nPlease find below the status update for [Date].\\n\\n[Name 1]\\n- [Task 1].\\n\\n[Name 2]\\n- [Task 1].\\n\\nKindly revert in case of any queries.\\n\\nRegards,\\n[Team Lead Name]"
+  "email_update": "Subject: Daily Project Status Update | [Date]\\n\\nDear Team,\\n\\nPlease find below the status update for [Date].\\n\\n[Name 1]\\n- [Fully rewritten task sentence, not a copy of the input].\\n\\n[Name 2]\\n- [Fully rewritten task sentence].\\n\\nKindly revert in case of any queries.\\n\\nRegards,\\nProject Team"
 }
 """
 
