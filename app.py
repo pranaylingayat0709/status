@@ -662,7 +662,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             slot.markdown(render_loader(1), unsafe_allow_html=True)
 
             completion = client.chat.completions.create(
-                model="nvidia/nemotron-3-nano-30b-a3b",
+                model="nvidia/nemotron-3.5-lightning-30b-a3b",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user",   "content": prompt_payload}
@@ -775,7 +775,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             st.warning("⚠️ Malformed response — retrying once…")
             try:
                 completion2 = client.chat.completions.create(
-                    model="nvidia/nemotron-3-nano-30b-a3b",
+                    model="nvidia/nemotron-3.5-lightning-30b-a3b",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user",   "content": prompt_payload}
