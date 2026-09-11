@@ -474,24 +474,22 @@ body:has(#dmchk:checked) .dm-label::after { content:'☀️'; transform:translat
 .main-title {
     font-family:'Syne',sans-serif; font-size:4.4rem; font-weight:900;
     letter-spacing:-2px; margin-bottom:0.4rem;
-    background:linear-gradient(120deg,#ffffff,#ffde59,#ffffff,#ffde59);
+    background:linear-gradient(120deg,#D97757,#8B3A1F,#D97757,#B45532);
     background-size:280% auto;
     -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
-    text-shadow:0 4px 30px rgba(0,0,0,0.15);
     animation:gradShift 6s linear infinite;
 }
 @keyframes gradShift { to { background-position:280% center; } }
 .main-subtitle {
-    color:rgba(255,255,255,0.94) !important; font-size:1.2rem; font-weight:600;
+    color:#5A4632 !important; font-size:1.2rem; font-weight:600;
     max-width:680px; margin:0.3rem auto 0; line-height:1.65;
-    text-shadow:0 3px 10px rgba(0,0,0,0.12);
 }
 .sangha-meaning {
     display:inline-flex; align-items:center; gap:8px; margin-top:1rem;
-    background:rgba(255,255,255,0.2); border:1.5px solid rgba(255,255,255,0.42);
+    background:rgba(217,119,87,0.12); border:1.5px solid rgba(217,119,87,0.35);
     border-radius:999px; padding:0.5rem 1.5rem; font-size:0.9rem; font-weight:600;
-    color:#ffffff !important; -webkit-text-fill-color:#ffffff !important;
-    backdrop-filter:blur(12px); box-shadow:0 6px 20px rgba(0,0,0,0.12);
+    color:#8B3A1F !important; -webkit-text-fill-color:#8B3A1F !important;
+    backdrop-filter:blur(12px);
     animation:fadeUp 0.7s 0.15s ease both;
 }
 @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
@@ -723,6 +721,18 @@ pre {
     font-family:'SFMono-Regular',Consolas,monospace !important;
     font-size:0.9rem !important; line-height:1.7 !important;
 }
+
+/* ── CARD HOVER ACCENT SWEEP — matching claude.com/blog's card hover style ── */
+.custom-card, .colored-block, .hist-card, .member-chip {
+    position:relative; overflow:hidden;
+}
+.custom-card::before, .colored-block::before {
+    content:'';
+    position:absolute; top:0; left:0; height:3px; width:0;
+    background:linear-gradient(90deg,#D97757,#B45532);
+    transition:width 0.35s ease;
+}
+.custom-card:hover::before, .colored-block:hover::before { width:100%; }
 
 /* ── ACCESSIBILITY: visible focus rings for keyboard navigation ── */
 button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
