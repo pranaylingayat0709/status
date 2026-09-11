@@ -97,6 +97,119 @@ def parse_members(raw: str) -> list:
     return members
 
 
+DOMAIN_KEYWORDS = {
+    "💻 Software Dev": ["deploy", "bug", "sprint", "merge", "pipeline", "api", "backend", "frontend", "code", "repo", "pr "],
+    "🧪 QA / Testing": ["test case", "regression", "qa ", "test coverage", "bug report", "uat"],
+    "🚀 DevOps":       ["infra", "kubernetes", "docker", "ci/cd", "server", "deployment", "monitoring"],
+    "🎨 Design / UX":  ["wireframe", "prototype", "figma", "user test", "design review", "mockup"],
+    "📦 Product":      ["roadmap", "backlog", "stakeholder", "feature spec", "user story"],
+    "💰 Finance":      ["invoice", "budget", "reconcil", "forecast", "audit", "expense"],
+    "🧩 Functional Team": ["coordinat", "escalat", "workflow", "operational", "process"],
+    "🧑‍🤝‍🧑 Human Resource Team": ["onboard", "candidate", "interview", "recruit", "policy", "employee engagement", "grievance", "performance review"],
+}
+
+
+def suggest_domain(raw: str):
+    """Best-effort domain guess from raw text keywords. Returns None if no clear signal."""
+    if not raw.strip():
+        return None
+    text = raw.lower()
+    scores = {d: sum(text.count(k) for k in kws) for d, kws in DOMAIN_KEYWORDS.items()}
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else None
+
+
+def looks_malformed(raw: str, members: list):
+    """Returns a warning message if the raw input looks off, else None."""
+    if not raw.strip():
+        return None
+    if not members:
+        return "Could not detect any team member names. Use a 'Name:' header followed by '-' bullet points."
+    if len(raw.strip().splitlines()) <= 2:
+        return "This looks very short — make sure each person's tasks are on their own '-' bulleted lines."
+    return None
+
+
+def diff_against_previous(current_members: list, previous_entry: dict) -> dict:
+    """
+    For each person in current_members, flags tasks that closely match a
+    task they had in the previous saved entry — signals possible carryover
+    or a stalled task. Returns {name: [repeated_task, ...]}.
+    """
+    if not previous_entry or not previous_entry.get("members_detail"):
+        return {}
+    from difflib import SequenceMatcher
+    prev_by_name = {m["name"].lower(): m["tasks"] for m in previous_entry["members_detail"]}
+    result = {}
+    for m in current_members:
+        prev_tasks = prev_by_name.get(m["name"].lower(), [])
+        repeats = []
+        for task in m["tasks"]:
+            for prev_task in prev_tasks:
+                if SequenceMatcher(None, task.lower(), prev_task.lower()).ratio() > 0.6:
+                    repeats.append(task)
+                    break
+        if repeats:
+            result[m["name"]] = repeats
+    return result
+
+
+def to_jira_confluence_markup(chat_update: str) -> str:
+    """
+    Deterministic transform of the already-generated chat_update text into
+    Jira/Confluence wiki markup — no extra LLM call needed, so it's instant.
+    "• Name" -> "h3. Name" ; "- task" -> "* task"
+    """
+    out_lines = []
+    for line in chat_update.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("•"):
+            out_lines.append(f"h3. {stripped.lstrip('•').strip()}")
+        elif stripped.startswith("-"):
+            out_lines.append(f"* {stripped.lstrip('-').strip()}")
+        elif stripped:
+            out_lines.append(f"h2. {stripped}")
+        else:
+            out_lines.append("")
+    return "\n".join(out_lines)
+
+
+def build_docx_export(data: dict, fmt_date: str):
+    """Builds a Word document from the generated status update. Returns
+    (bytes, None) on success, or (None, error_message) if python-docx
+    isn't installed in this environment."""
+    try:
+        from docx import Document
+        import io as _io
+    except ImportError:
+        return None, "python-docx isn't installed — add 'python-docx' to requirements.txt to enable this."
+
+    doc = Document()
+    doc.add_heading(f"Daily Status Update — {fmt_date}", level=1)
+
+    doc.add_heading("Standup Narrative", level=2)
+    doc.add_paragraph(data.get("standup_narrative", ""))
+
+    if data.get("tomorrow_plan"):
+        doc.add_heading("Tomorrow's Plan", level=2)
+        doc.add_paragraph(data["tomorrow_plan"])
+
+    if data.get("blocker_summary"):
+        doc.add_heading("Blockers", level=2)
+        doc.add_paragraph(data["blocker_summary"])
+
+    doc.add_heading("Chat Update", level=2)
+    doc.add_paragraph(data.get("chat_update", ""))
+
+    doc.add_heading("Email Update", level=2)
+    doc.add_paragraph(data.get("email_update", ""))
+
+    buf = _io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read(), None
+
+
 def mailto_link(subject: str, body: str) -> str:
     s = urllib.parse.quote(subject)
     b = urllib.parse.quote(body)
@@ -588,6 +701,34 @@ pre {
     color:var(--code-txt) !important; font-size:0.94rem !important; line-height:1.75 !important;
 }
 
+/* ── EDITABLE OUTPUT TEXTAREAS (narrative/chat/whatsapp/email) — matches
+   the previous read-only code-block look, but content is now editable. ── */
+.colored-block .stTextArea textarea {
+    background:var(--code-bg) !important; color:var(--code-txt) !important;
+    border-radius:16px !important; border:1.5px solid rgba(0,0,0,0.06) !important;
+    font-family:'SFMono-Regular',Consolas,monospace !important;
+    font-size:0.9rem !important; line-height:1.7 !important;
+}
+
+/* ── ACCESSIBILITY: visible focus rings for keyboard navigation ── */
+button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+    outline: 3px solid #FF0076 !important;
+    outline-offset: 2px !important;
+}
+
+/* ── CUSTOM SCROLLBAR ── */
+::-webkit-scrollbar { width:10px; height:10px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:rgba(255,0,118,0.35); border-radius:99px; }
+::-webkit-scrollbar-thumb:hover { background:rgba(255,0,118,0.55); }
+
+/* ── PRINT-FRIENDLY ── */
+@media print {
+    .stButton, #dmchk, .dm-label { display:none !important; }
+    .stApp { background:#fff !important; }
+    .colored-block, .custom-card { box-shadow:none !important; }
+}
+
 /* ── STATS ROW ── */
 .stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:1.6rem 0 0; }
 @media (max-width:600px) { .stats-row { grid-template-columns:1fr; } }
@@ -597,7 +738,18 @@ pre {
     transition:transform 0.2s ease;
 }
 .stat-chip:hover { transform:translateY(-3px); }
-.stat-val { font-family:'Syne',sans-serif; font-size:1.7rem; font-weight:800; color:var(--text-h); }
+.stat-val {
+    font-family:'Syne',sans-serif; font-size:1.7rem; font-weight:800; color:var(--text-h);
+    display:inline-block; animation:statPopIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes statPopIn {
+    0%   { opacity:0; transform:scale(0.4) translateY(8px); }
+    60%  { opacity:1; transform:scale(1.15) translateY(-2px); }
+    100% { opacity:1; transform:scale(1) translateY(0); }
+}
+.stat-chip:nth-child(1) .stat-val { animation-delay:0.05s; }
+.stat-chip:nth-child(2) .stat-val { animation-delay:0.15s; }
+.stat-chip:nth-child(3) .stat-val { animation-delay:0.25s; }
 .stat-lbl { font-size:0.74rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-m); margin-top:0.15rem; }
 
 /* ── TOKEN BADGE ── */
@@ -668,6 +820,12 @@ with cfg2:
     tone_choice = st.selectbox("🎨 Tone", options=list(TONE_OPTIONS.keys()), index=1, key="pref_tone")
 with cfg3:
     domain_choice = st.selectbox("🏢 Domain", options=list(DOMAIN_OPTIONS.keys()), index=0, key="pref_domain")
+    _prev_raw = st.session_state.get("raw_input", "")
+    _suggested_domain = suggest_domain(_prev_raw)
+    if _suggested_domain and _suggested_domain != domain_choice:
+        if st.button(f"💡 Use suggested: {_suggested_domain}", key="apply_suggested_domain"):
+            st.session_state.pref_domain = _suggested_domain
+            st.rerun()
 with cfg4:
     lang_choice = st.selectbox("🌐 Output Language", options=list(OUTPUT_LANG_OPTIONS.keys()), index=0, key="pref_lang")
 
@@ -715,6 +873,10 @@ Carol:
 
 members = parse_members(raw_updates) if raw_updates.strip() else []
 
+_warn = looks_malformed(raw_updates, members)
+if _warn and raw_updates.strip():
+    st.caption(f"⚠️ {_warn}")
+
 if members:
     total_tasks    = sum(m["count"] for m in members)
     total_blockers = sum(len(m["blockers"]) for m in members)
@@ -727,14 +889,38 @@ if members:
         unsafe_allow_html=True
     )
     chips = ""
-    for m in members:
+    avatar_colors = ["#FF0076", "#590FB7", "#23a6d5", "#23d5ab", "#f59e0b", "#ef4444"]
+    for i, m in enumerate(members):
         bl = (f'<div class="chip-block">⚠️ {len(m["blockers"])} blocker{"s" if len(m["blockers"])>1 else ""}</div>'
               if m["blockers"] else "")
+        initial = m["name"].strip()[:1].upper() or "?"
+        color = avatar_colors[i % len(avatar_colors)]
         chips += (
-            f'<div class="member-chip"><div class="chip-name">{m["name"]}</div>'
-            f'<div class="chip-tasks">{m["count"]} task{"s" if m["count"]!=1 else ""}</div>{bl}</div>'
+            f'<div class="member-chip" style="display:flex;align-items:center;gap:10px;">'
+            f'<div style="width:32px;height:32px;border-radius:50%;background:{color};'
+            f'color:#fff;display:flex;align-items:center;justify-content:center;'
+            f'font-weight:800;font-size:0.9rem;flex-shrink:0;">{initial}</div>'
+            f'<div><div class="chip-name">{m["name"]}</div>'
+            f'<div class="chip-tasks">{m["count"]} task{"s" if m["count"]!=1 else ""}</div>{bl}</div></div>'
         )
     st.markdown(f'<div class="member-chips">{chips}</div>', unsafe_allow_html=True)
+
+    # ── DIFF AGAINST YESTERDAY ──
+    if st.session_state.history:
+        repeats = diff_against_previous(members, st.session_state.history[0])
+        if repeats:
+            repeat_lines = "".join(
+                f'<div style="margin-top:0.3rem;"><strong>{name}:</strong> '
+                f'{", ".join(tasks)}</div>'
+                for name, tasks in repeats.items()
+            )
+            st.markdown(
+                f'<div style="margin-top:0.75rem;background:rgba(245,158,11,0.08);'
+                f'border:1.5px solid rgba(245,158,11,0.25);border-radius:12px;'
+                f'padding:0.7rem 1rem;font-size:0.85rem;color:#92400E;">'
+                f'🔁 <strong>Possibly carried over from last update:</strong>{repeat_lines}</div>',
+                unsafe_allow_html=True
+            )
 
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -775,32 +961,73 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
 
             slot.markdown(render_loader(1), unsafe_allow_html=True)
 
+            # Scale token budgets by team size — a 1-person update needs far
+            # fewer tokens than a 10-person one; fixed budgets either waste
+            # headroom (small teams) or truncate (large teams).
+            team_size = max(1, len(members))
+            narrative_tokens = min(3000, 900 + team_size * 220)
+            chat_tokens       = min(2600, 800 + team_size * 180)
+            email_tokens      = min(2200, 700 + team_size * 160)
+
             # ── THREE INDEPENDENT CALLS IN PARALLEL ──
             # Narrative, chat/WhatsApp, and email don't depend on each other,
             # so firing them concurrently cuts total wait time to roughly the
             # slowest single call instead of the sum of all three.
             total_tokens_used = 0
             with ThreadPoolExecutor(max_workers=3) as ex:
-                fut_narrative = ex.submit(call_llm_json, narrative_prompt, prompt_payload, 0.1, 1600)
-                fut_chat      = ex.submit(call_llm_json, chat_prompt, prompt_payload, 0.1, 1400)
-                fut_email     = ex.submit(call_llm_json, email_prompt, prompt_payload, 0.1, 1200)
+                fut_narrative = ex.submit(call_llm_json, narrative_prompt, prompt_payload, 0.1, narrative_tokens)
+                fut_chat      = ex.submit(call_llm_json, chat_prompt, prompt_payload, 0.1, chat_tokens)
+                fut_email     = ex.submit(call_llm_json, email_prompt, prompt_payload, 0.1, email_tokens)
+
+                results = {}
+                errors  = {}
+                for name, fut in (("narrative", fut_narrative), ("chat", fut_chat), ("email", fut_email)):
+                    try:
+                        piece, completion = fut.result()
+                        results[name] = piece
+                        if hasattr(completion, "usage") and completion.usage:
+                            total_tokens_used += completion.usage.total_tokens
+                    except Exception as e:
+                        errors[name] = e
+
+                # Retry only the piece(s) that actually failed, not all three —
+                # cheaper and faster than a blanket full retry.
+                retry_prompts = {
+                    "narrative": (narrative_prompt, narrative_tokens),
+                    "chat":      (chat_prompt, chat_tokens),
+                    "email":     (email_prompt, email_tokens),
+                }
+                for name in list(errors.keys()):
+                    p, budget = retry_prompts[name]
+                    try:
+                        piece, completion = call_llm_json(p, prompt_payload, 0.05, budget)
+                        results[name] = piece
+                        if hasattr(completion, "usage") and completion.usage:
+                            total_tokens_used += completion.usage.total_tokens
+                        del errors[name]
+                    except Exception:
+                        pass  # still failed after retry — that piece just won't render
 
                 data = {}
-                for fut in (fut_narrative, fut_chat, fut_email):
-                    piece, completion = fut.result()
+                for piece in results.values():
                     data.update(piece)
-                    if hasattr(completion, "usage") and completion.usage:
-                        total_tokens_used += completion.usage.total_tokens
+
+                if errors:
+                    st.warning(f"⚠️ Could not generate: {', '.join(errors.keys())}. Try regenerating.")
 
             slot.markdown(render_loader(2), unsafe_allow_html=True)
 
             st.session_state.session_tokens += total_tokens_used
 
+            # Capture yesterday's entry (if any) BEFORE inserting today's,
+            # so we can diff today's tasks against it.
+            previous_entry = st.session_state.history[0] if st.session_state.history else None
+
             st.session_state.history.insert(0, {
                 "date": fmt_date, "project": project_name or "—",
                 "members": len(members), "tasks": sum(m["count"] for m in members),
                 "tone": tone_choice, "domain": domain_choice, "lang": lang_choice,
-                "data": data,
+                "data": data, "members_detail": members,
             })
             st.session_state.history = st.session_state.history[:MAX_HISTORY]
 
@@ -827,7 +1054,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 '<div class="block-title narrative-title"><span>🗣️ Standup Narrative</span></div>',
                 unsafe_allow_html=True
             )
-            st.code(narrative, language="text")
+            st.text_area("Narrative", narrative, height=180, key="edit_narrative", label_visibility="collapsed")
             st.markdown("</div>", unsafe_allow_html=True)
 
             # Chat + WhatsApp side by side
@@ -836,7 +1063,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 '<div class="block-title chat-title"><span>💬 Chat Update (Slack / Teams)</span></div>',
                 unsafe_allow_html=True
             )
-            st.code(chat, language="text")
+            st.text_area("Chat", chat, height=160, key="edit_chat", label_visibility="collapsed")
             st.markdown("</div>", unsafe_allow_html=True)
 
             st.markdown(
@@ -844,7 +1071,17 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 '<div class="block-title whatsapp-title"><span>📱 WhatsApp Update</span></div>',
                 unsafe_allow_html=True
             )
-            st.code(wa, language="text")
+            st.text_area("WhatsApp", wa, height=160, key="edit_whatsapp", label_visibility="collapsed")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # Jira/Confluence markup — derived instantly from chat_update, no extra API call
+            jira_markup = to_jira_confluence_markup(chat)
+            st.markdown(
+                '<div class="colored-block tomorrow-block">'
+                '<div class="block-title tomorrow-title"><span>🧩 Jira / Confluence Markup</span></div>',
+                unsafe_allow_html=True
+            )
+            st.text_area("Jira", jira_markup, height=160, key="edit_jira", label_visibility="collapsed")
             st.markdown("</div>", unsafe_allow_html=True)
 
             # Email — full width with mailto button
@@ -855,7 +1092,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 f'<a class="action-btn" href="{mailto}">✉️ Open in Mail App</a></div>',
                 unsafe_allow_html=True
             )
-            st.code(email_raw, language="text")
+            st.text_area("Email", email_raw, height=220, key="edit_email", label_visibility="collapsed")
             st.markdown("</div>", unsafe_allow_html=True)
 
             if include_tomorrow and data.get("tomorrow_plan"):
@@ -886,6 +1123,17 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 f'Runs saved: {len(st.session_state.history)}</div></div>',
                 unsafe_allow_html=True
             )
+
+            docx_bytes, docx_err = build_docx_export(data, fmt_date)
+            if docx_bytes:
+                st.download_button(
+                    "⬇️ Download as Word (.docx)", data=docx_bytes,
+                    file_name=f"status_{date.today().isoformat()}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key="dl_docx"
+                )
+            elif docx_err:
+                st.caption(f"📄 Word export unavailable: {docx_err}")
 
         except json.JSONDecodeError:
             slot.empty()
@@ -942,3 +1190,29 @@ if st.session_state.history:
         if st.button("🗑️ Clear all history", key="clear_hist"):
             st.session_state.history = []
             st.rerun()
+
+    # ── WEEKLY ROLLUP — aggregates whatever's currently saved in history ──
+    if len(st.session_state.history) >= 2:
+        if st.button("📊 Generate Weekly Rollup", key="weekly_rollup_btn"):
+            rollup_lines = ["WEEKLY ROLLUP", "=" * 40, ""]
+            person_totals = {}
+            for entry in st.session_state.history:
+                rollup_lines.append(f"📅 {entry['date']} — {entry.get('project','—')}")
+                narrative = entry["data"].get("standup_narrative", "")
+                rollup_lines.append(narrative)
+                rollup_lines.append("-" * 30)
+                person_totals[entry.get("project", "—")] = person_totals.get(entry.get("project", "—"), 0) + entry.get("tasks", 0)
+            rollup_lines.append("")
+            rollup_lines.append(f"Total standups included: {len(st.session_state.history)}")
+            rollup_lines.append(f"Total tasks across all entries: {sum(e.get('tasks',0) for e in st.session_state.history)}")
+            rollup_text = "\n".join(rollup_lines)
+            st.markdown(
+                '<div class="colored-block narrative-block">'
+                '<div class="block-title narrative-title"><span>📊 Weekly Rollup</span></div>',
+                unsafe_allow_html=True
+            )
+            st.code(rollup_text, language="text")
+            st.download_button("⬇️ Download Rollup", data=rollup_text,
+                              file_name=f"weekly_rollup_{date.today().isoformat()}.txt",
+                              mime="text/plain", key="dl_rollup")
+            st.markdown("</div>", unsafe_allow_html=True)
