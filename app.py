@@ -677,12 +677,24 @@ body:has(#dmchk:checked) div[data-baseweb="menu"] [role="option"] * {
 
 @keyframes blockReveal { from{opacity:0;transform:translateY(22px)} to{opacity:1;transform:translateY(0)} }
 .colored-block {
-    padding:1.75rem 2rem; border-radius:22px;
-    background:var(--out-bg); box-shadow:0 10px 32px rgba(0,0,0,0.09);
+    padding:1.75rem 2rem; border-radius:18px 22px 22px 4px;
+    background:var(--out-bg);
+    box-shadow:0 4px 0 rgba(0,0,0,0.03), 0 10px 32px rgba(0,0,0,0.09);
     animation:blockReveal 0.5s ease both;
     transition:transform 0.25s ease, box-shadow 0.25s ease;
+    position:relative; overflow:hidden;
 }
-.colored-block:hover { transform:translateY(-4px); box-shadow:0 18px 40px rgba(0,0,0,0.14); }
+.colored-block:hover { transform:translateY(-4px); box-shadow:0 6px 0 rgba(0,0,0,0.04), 0 18px 40px rgba(0,0,0,0.14); }
+/* Paper-fold corner detail — small triangular fold, top-right */
+.colored-block::after {
+    content:''; position:absolute; top:0; right:0;
+    width:0; height:0;
+    border-style:solid; border-width:0 22px 22px 0;
+    border-color:transparent rgba(0,0,0,0.05) transparent transparent;
+    transition:border-width 0.2s ease;
+}
+.colored-block:hover::after { border-width:0 28px 28px 0; }
+
 .narrative-block { border-left:7px solid #4f46e5; background:rgba(79,70,229,0.045); animation-delay:0.05s; grid-column:1/-1; }
 .chat-block      { border-left:7px solid #ec4899; background:rgba(236,72,153,0.045); animation-delay:0.12s; }
 .whatsapp-block  { border-left:7px solid #25D366; background:rgba(37,211,102,0.045); animation-delay:0.19s; }
@@ -694,6 +706,21 @@ body:has(#dmchk:checked) div[data-baseweb="menu"] [role="option"] * {
     font-size:1.28rem; font-weight:900; margin-bottom:1rem;
     display:flex; align-items:center; justify-content:space-between; gap:12px;
 }
+/* Icon badge for each block title — matching SatiCast's colored section-badge */
+.block-icon-badge {
+    width:34px; height:34px; border-radius:10px; flex-shrink:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:1rem; margin-right:0.6rem; transition:transform 0.25s ease;
+}
+.colored-block:hover .block-icon-badge { transform:rotate(-8deg) scale(1.1); }
+.narrative-block .block-icon-badge { background:linear-gradient(135deg,#E0E7FF,#C7D2FE); }
+.chat-block .block-icon-badge      { background:linear-gradient(135deg,#FCE7F3,#FBCFE8); }
+.whatsapp-block .block-icon-badge  { background:linear-gradient(135deg,#D1FAE5,#A7F3D0); }
+.email-block .block-icon-badge     { background:linear-gradient(135deg,#FEF3C7,#FDE68A); }
+.tomorrow-block .block-icon-badge  { background:linear-gradient(135deg,#CFFAFE,#A5F3FC); }
+.blocker-block .block-icon-badge   { background:linear-gradient(135deg,#FEE2E2,#FECACA); }
+.block-title-text { display:flex; align-items:center; }
+
 .narrative-title { color:#4f46e5; } .chat-title { color:#db2777; }
 .whatsapp-title  { color:#128C7E; } .email-title { color:#d97706; }
 .tomorrow-title  { color:#0891b2; } .blocker-title { color:#dc2626; }
@@ -1075,7 +1102,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             # Narrative — full width
             st.markdown(
                 '<div class="colored-block narrative-block">'
-                '<div class="block-title narrative-title"><span>🗣️ Standup Narrative</span></div>',
+                '<div class="block-title narrative-title"><span class="block-title-text"><span class="block-icon-badge">🗣️</span>Standup Narrative</span></div>',
                 unsafe_allow_html=True
             )
             st.text_area("Narrative", narrative, height=dynamic_ta_height(narrative), key="edit_narrative", label_visibility="collapsed")
@@ -1084,7 +1111,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             # Chat + WhatsApp side by side
             st.markdown(
                 '<div class="colored-block chat-block">'
-                '<div class="block-title chat-title"><span>💬 Chat Update (Slack / Teams)</span></div>',
+                '<div class="block-title chat-title"><span class="block-title-text"><span class="block-icon-badge">💬</span>Chat Update (Slack / Teams)</span></div>',
                 unsafe_allow_html=True
             )
             st.text_area("Chat", chat, height=dynamic_ta_height(chat), key="edit_chat", label_visibility="collapsed")
@@ -1092,7 +1119,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
 
             st.markdown(
                 '<div class="colored-block whatsapp-block">'
-                '<div class="block-title whatsapp-title"><span>📱 WhatsApp Update</span></div>',
+                '<div class="block-title whatsapp-title"><span class="block-title-text"><span class="block-icon-badge">📱</span>WhatsApp Update</span></div>',
                 unsafe_allow_html=True
             )
             st.text_area("WhatsApp", wa, height=dynamic_ta_height(wa), key="edit_whatsapp", label_visibility="collapsed")
@@ -1102,7 +1129,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             jira_markup = to_jira_confluence_markup(chat)
             st.markdown(
                 '<div class="colored-block tomorrow-block">'
-                '<div class="block-title tomorrow-title"><span>🧩 Jira / Confluence Markup</span></div>',
+                '<div class="block-title tomorrow-title"><span class="block-title-text"><span class="block-icon-badge">🧩</span>Jira / Confluence Markup</span></div>',
                 unsafe_allow_html=True
             )
             st.text_area("Jira", jira_markup, height=dynamic_ta_height(jira_markup), key="edit_jira", label_visibility="collapsed")
@@ -1112,7 +1139,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             st.markdown(
                 f'<div class="colored-block email-block">'
                 f'<div class="block-title email-title">'
-                f'<span>📧 Email Update</span>'
+                f'<span class="block-title-text"><span class="block-icon-badge">📧</span>Email Update</span>'
                 f'<a class="action-btn" href="{mailto}">✉️ Open in Mail App</a></div>',
                 unsafe_allow_html=True
             )
@@ -1122,7 +1149,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             if include_tomorrow and data.get("tomorrow_plan"):
                 st.markdown(
                     '<div class="colored-block tomorrow-block">'
-                    '<div class="block-title tomorrow-title">📅 Tomorrow\'s Plan</div>',
+                    '<div class="block-title tomorrow-title"><span class="block-title-text"><span class="block-icon-badge">📅</span>Tomorrow\'s Plan</span></div>',
                     unsafe_allow_html=True
                 )
                 st.code(data["tomorrow_plan"], language="text")
@@ -1131,7 +1158,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             if include_blockers and data.get("blocker_summary"):
                 st.markdown(
                     '<div class="colored-block blocker-block">'
-                    '<div class="block-title blocker-title">🚧 Blockers Summary</div>',
+                    '<div class="block-title blocker-title"><span class="block-title-text"><span class="block-icon-badge">🚧</span>Blockers Summary</span></div>',
                     unsafe_allow_html=True
                 )
                 st.code(data["blocker_summary"], language="text")
@@ -1232,7 +1259,7 @@ if st.session_state.history:
             rollup_text = "\n".join(rollup_lines)
             st.markdown(
                 '<div class="colored-block narrative-block">'
-                '<div class="block-title narrative-title"><span>📊 Weekly Rollup</span></div>',
+                '<div class="block-title narrative-title"><span class="block-title-text"><span class="block-icon-badge">📊</span>Weekly Rollup</span></div>',
                 unsafe_allow_html=True
             )
             st.code(rollup_text, language="text")
