@@ -154,6 +154,20 @@ def diff_against_previous(current_members: list, previous_entry: dict) -> dict:
     return result
 
 
+def dynamic_ta_height(text: str, min_h: int = 120, max_h: int = 500) -> int:
+    """
+    Sizes a text_area to fit its actual content instead of a fixed height
+    that clips longer generations — counts wrapped lines (~90 chars/line)
+    plus explicit newlines, at ~24px per line, clamped to a sane range.
+    """
+    if not text:
+        return min_h
+    line_count = 0
+    for line in text.splitlines():
+        line_count += max(1, -(-len(line) // 90))  # ceil division for wrapping
+    return max(min_h, min(max_h, line_count * 24 + 40))
+
+
 def to_jira_confluence_markup(chat_update: str) -> str:
     """
     Deterministic transform of the already-generated chat_update text into
@@ -403,21 +417,21 @@ CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Syne:wght@700;800&display=swap');
 
 :root {
-    --app-bg:linear-gradient(-45deg,#ee7752,#e73c7e,#23a6d5,#23d5ab);
+    --app-bg:linear-gradient(-45deg,#F5EFE3,#FBEEE5,#F0E4D4,#F7F2E8);
     --card-bg:rgba(255,255,255,0.96); --card-bdr:rgba(255,255,255,1);
-    --text-h:#0f172a; --text-b:#1e293b; --text-m:#475569;
+    --text-h:#1F1E1D; --text-b:#1e293b; --text-m:#475569;
     --input-bg:#f8fafc; --input-bdr:#cbd5e1; --input-txt:#0f172a;
-    --btn-sh1:rgba(89,15,183,0.4);
+    --btn-sh1:rgba(180,85,50,0.4);
     --out-bg:#ffffff; --code-bg:#fafafa; --code-txt:#0f172a;
     --chip-bg:rgba(255,255,255,0.7); --chip-bdr:rgba(0,0,0,0.08);
     --loader-bg:rgba(255,255,255,0.97); --loader-title:#1e1b4b; --loader-sub:#6d28d9;
 }
 body:has(#dmchk:checked) {
-    --app-bg:linear-gradient(-45deg,#0d0221,#0a1628,#12062a,#061220);
+    --app-bg:linear-gradient(-45deg,#1F1E1D,#211E1A,#241C18,#1D1B17);
     --card-bg:rgba(15,23,42,0.92); --card-bdr:rgba(255,255,255,0.08);
     --text-h:#F1F5F9; --text-b:#CBD5E1; --text-m:#94A3B8;
-    --input-bg:rgba(15,23,42,0.95); --input-bdr:rgba(255,0,118,0.35); --input-txt:#F1F5F9;
-    --btn-sh1:rgba(255,0,118,0.35);
+    --input-bg:rgba(15,23,42,0.95); --input-bdr:rgba(217,119,87,0.35); --input-txt:#F1F5F9;
+    --btn-sh1:rgba(217,119,87,0.35);
     --out-bg:rgba(15,23,42,0.9); --code-bg:#0f172a; --code-txt:#E2E8F0;
     --chip-bg:rgba(255,255,255,0.06); --chip-bdr:rgba(255,255,255,0.1);
     --loader-bg:rgba(10,15,30,0.96); --loader-title:#DDD6FE; --loader-sub:#A78BFA;
@@ -520,7 +534,7 @@ body:has(#dmchk:checked) .dm-label::after { content:'☀️'; transform:translat
     opacity:0.75 !important;
 }
 .stTextArea textarea:focus, .stTextInput input:focus {
-    border-color:#FF0076 !important; box-shadow:0 0 0 4px rgba(255,0,118,0.15) !important;
+    border-color:#D97757 !important; box-shadow:0 0 0 4px rgba(217,119,87,0.15) !important;
 }
 /* Box background/border kept exactly as before — only fixing text color so it's
    readable: light box (light theme) gets dark text, dark box (dark theme) gets light text. */
@@ -594,14 +608,14 @@ div[data-testid="stDateInput"] label, div[data-testid="stTextArea"] label {
 
 /* ── MAIN BUTTON ── */
 .stButton > button {
-    background:linear-gradient(135deg,#FF0076 0%,#590FB7 100%) !important;
+    background:linear-gradient(135deg,#D97757 0%,#B45532 100%) !important;
     color:#fff !important; border:none !important; border-radius:50px !important;
     padding:1.05rem 4.2rem !important; font-size:1.15rem !important; font-weight:800 !important;
     letter-spacing:0.05em; display:block; margin:2rem auto;
     box-shadow:0 10px 30px var(--btn-sh1) !important;
     transition:all 0.3s cubic-bezier(0.4,0,0.2,1) !important;
 }
-.stButton > button:hover { transform:translateY(-4px) scale(1.02) !important; box-shadow:0 18px 42px rgba(255,0,118,0.5) !important; }
+.stButton > button:hover { transform:translateY(-4px) scale(1.02) !important; box-shadow:0 18px 42px rgba(217,119,87,0.5) !important; }
 .stButton > button:active { transform:scale(0.97) !important; }
 
 /* ── SELECTBOX TEXT COLOR — dark mode only.
@@ -649,11 +663,11 @@ body:has(#dmchk:checked) div[data-baseweb="menu"] [role="option"] * {
 .loader-sub   { font-size:0.84rem; font-weight:600; margin-bottom:1.6rem; color:var(--loader-sub); }
 .loader-dots  { display:flex; justify-content:center; gap:9px; margin-bottom:1.5rem; }
 .ld { width:11px; height:11px; border-radius:50%; background:#e5e7eb; transition:background 0.3s; }
-.lactive { background:linear-gradient(135deg,#FF0076,#590FB7); animation:dotPop 0.4s cubic-bezier(0.34,1.56,0.64,1) both; box-shadow:0 0 10px rgba(255,0,118,0.5); }
-.ldone { background:#590FB7; }
-.loader-bar-bg { height:7px; border-radius:99px; background:rgba(89,15,183,0.1); overflow:hidden; margin-bottom:0.6rem; }
+.lactive { background:linear-gradient(135deg,#D97757,#B45532); animation:dotPop 0.4s cubic-bezier(0.34,1.56,0.64,1) both; box-shadow:0 0 10px rgba(217,119,87,0.5); }
+.ldone { background:#B45532; }
+.loader-bar-bg { height:7px; border-radius:99px; background:rgba(180,85,50,0.1); overflow:hidden; margin-bottom:0.6rem; }
 .loader-bar-fg {
-    height:100%; border-radius:99px; background:linear-gradient(90deg,#FF0076,#590FB7,#23a6d5,#FF0076);
+    height:100%; border-radius:99px; background:linear-gradient(90deg,#D97757,#B45532,#23a6d5,#D97757);
     background-size:200% 100%; animation:shimmer 1.5s linear infinite;
     transition:width 0.4s cubic-bezier(0.4,0,0.2,1);
 }
@@ -692,7 +706,7 @@ body:has(#dmchk:checked) div[data-baseweb="menu"] [role="option"] * {
     padding:0.4rem 1.1rem; font-size:0.8rem; font-weight:700;
     color:var(--text-h); text-decoration:none; transition:all 0.2s;
 }
-.action-btn:hover { background:rgba(255,0,118,0.1); border-color:rgba(255,0,118,0.3); transform:translateY(-1px); }
+.action-btn:hover { background:rgba(217,119,87,0.1); border-color:rgba(217,119,87,0.3); transform:translateY(-1px); }
 
 /* ── CODE BLOCKS ── */
 pre {
@@ -712,15 +726,15 @@ pre {
 
 /* ── ACCESSIBILITY: visible focus rings for keyboard navigation ── */
 button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
-    outline: 3px solid #FF0076 !important;
+    outline: 3px solid #D97757 !important;
     outline-offset: 2px !important;
 }
 
 /* ── CUSTOM SCROLLBAR ── */
 ::-webkit-scrollbar { width:10px; height:10px; }
 ::-webkit-scrollbar-track { background:transparent; }
-::-webkit-scrollbar-thumb { background:rgba(255,0,118,0.35); border-radius:99px; }
-::-webkit-scrollbar-thumb:hover { background:rgba(255,0,118,0.55); }
+::-webkit-scrollbar-thumb { background:rgba(217,119,87,0.35); border-radius:99px; }
+::-webkit-scrollbar-thumb:hover { background:rgba(217,119,87,0.55); }
 
 /* ── PRINT-FRIENDLY ── */
 @media print {
@@ -889,7 +903,7 @@ if members:
         unsafe_allow_html=True
     )
     chips = ""
-    avatar_colors = ["#FF0076", "#590FB7", "#23a6d5", "#23d5ab", "#f59e0b", "#ef4444"]
+    avatar_colors = ["#D97757", "#B45532", "#23a6d5", "#23d5ab", "#f59e0b", "#ef4444"]
     for i, m in enumerate(members):
         bl = (f'<div class="chip-block">⚠️ {len(m["blockers"])} blocker{"s" if len(m["blockers"])>1 else ""}</div>'
               if m["blockers"] else "")
@@ -1054,7 +1068,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 '<div class="block-title narrative-title"><span>🗣️ Standup Narrative</span></div>',
                 unsafe_allow_html=True
             )
-            st.text_area("Narrative", narrative, height=180, key="edit_narrative", label_visibility="collapsed")
+            st.text_area("Narrative", narrative, height=dynamic_ta_height(narrative), key="edit_narrative", label_visibility="collapsed")
             st.markdown("</div>", unsafe_allow_html=True)
 
             # Chat + WhatsApp side by side
@@ -1063,7 +1077,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 '<div class="block-title chat-title"><span>💬 Chat Update (Slack / Teams)</span></div>',
                 unsafe_allow_html=True
             )
-            st.text_area("Chat", chat, height=160, key="edit_chat", label_visibility="collapsed")
+            st.text_area("Chat", chat, height=dynamic_ta_height(chat), key="edit_chat", label_visibility="collapsed")
             st.markdown("</div>", unsafe_allow_html=True)
 
             st.markdown(
@@ -1071,7 +1085,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 '<div class="block-title whatsapp-title"><span>📱 WhatsApp Update</span></div>',
                 unsafe_allow_html=True
             )
-            st.text_area("WhatsApp", wa, height=160, key="edit_whatsapp", label_visibility="collapsed")
+            st.text_area("WhatsApp", wa, height=dynamic_ta_height(wa), key="edit_whatsapp", label_visibility="collapsed")
             st.markdown("</div>", unsafe_allow_html=True)
 
             # Jira/Confluence markup — derived instantly from chat_update, no extra API call
@@ -1081,7 +1095,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 '<div class="block-title tomorrow-title"><span>🧩 Jira / Confluence Markup</span></div>',
                 unsafe_allow_html=True
             )
-            st.text_area("Jira", jira_markup, height=160, key="edit_jira", label_visibility="collapsed")
+            st.text_area("Jira", jira_markup, height=dynamic_ta_height(jira_markup), key="edit_jira", label_visibility="collapsed")
             st.markdown("</div>", unsafe_allow_html=True)
 
             # Email — full width with mailto button
@@ -1092,7 +1106,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 f'<a class="action-btn" href="{mailto}">✉️ Open in Mail App</a></div>',
                 unsafe_allow_html=True
             )
-            st.text_area("Email", email_raw, height=220, key="edit_email", label_visibility="collapsed")
+            st.text_area("Email", email_raw, height=dynamic_ta_height(email_raw), key="edit_email", label_visibility="collapsed")
             st.markdown("</div>", unsafe_allow_html=True)
 
             if include_tomorrow and data.get("tomorrow_plan"):
