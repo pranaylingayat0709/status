@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import re
+import os
 import hashlib
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
@@ -20,9 +21,41 @@ st.set_page_config(
 # ═══════════════════════════════════════════════════
 # SESSION STATE
 # ═══════════════════════════════════════════════════
+HISTORY_FILE = ".sanghastatus_history.json"
+
+
+def load_history_from_disk() -> list:
+    """
+    Best-effort persistence across page refreshes within the SAME running
+    deployment. IMPORTANT CAVEAT: this is a single shared file on the
+    server's local disk — it survives a browser refresh or the app
+    sleeping/waking, but it is:
+      - SHARED across every visitor to this deployment (not private per user)
+      - LOST on a fresh redeploy or if the platform's filesystem is ephemeral
+    True per-user persistence would need a real database with user accounts.
+    This is appropriate for a small private/team deployment, not a public
+    multi-tenant one.
+    """
+    try:
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return []
+
+
+def save_history_to_disk(history: list) -> None:
+    try:
+        with open(HISTORY_FILE, "w") as f:
+            json.dump(history, f)
+    except Exception:
+        pass  # read-only filesystem or other issue — fail silently, session-state still works
+
+
 def init_state():
     defaults = {
-        "history":        [],
+        "history":        load_history_from_disk(),
         "session_tokens": 0,
     }
     for k, v in defaults.items():
@@ -89,9 +122,18 @@ def parse_members(raw: str) -> list:
         header = lines[0].strip().rstrip(":")
         tasks = [l.strip().lstrip("-•*").strip() for l in lines[1:]
                  if l.strip() and l.strip()[0] in "-•*"]
-        blockers = [t for t in tasks if any(
-            w in t.lower() for w in ["block", "stuck", "wait", "depend", "issue", "pending"]
-        )]
+        # Instant, pre-API heuristic for the member-chip badge — deliberately
+        # conservative (phrases, not bare words) to avoid flagging normal
+        # work like "resolved the issue" or "fixed the bug" as a blocker.
+        # The LLM-generated blocker_summary (build_narrative_prompt) does the
+        # real semantic judgment call; this is just a cheap instant hint.
+        blocker_phrases = [
+            "blocked", "block on", "blocked by", "stuck on", "stuck with",
+            "waiting on", "waiting for", "pending approval", "pending access",
+            "need approval", "need access", "unable to", "not able to",
+            "can't proceed", "cannot proceed", "dependency on", "depends on",
+        ]
+        blockers = [t for t in tasks if any(p in t.lower() for p in blocker_phrases)]
         if header and tasks:
             members.append({"name": header, "tasks": tasks, "blockers": blockers, "count": len(tasks)})
     return members
@@ -132,9 +174,11 @@ def looks_malformed(raw: str, members: list):
 
 def diff_against_previous(current_members: list, previous_entry: dict) -> dict:
     """
-    For each person in current_members, flags tasks that closely match a
+    For each person in current_members, finds tasks that closely match a
     task they had in the previous saved entry — signals possible carryover
-    or a stalled task. Returns {name: [repeated_task, ...]}.
+    or a stalled task. Returns {name: [(today_task, yesterday_task), ...]}
+    so the UI can show an actual before/after comparison, not just today's
+    text in isolation.
     """
     if not previous_entry or not previous_entry.get("members_detail"):
         return {}
@@ -143,15 +187,53 @@ def diff_against_previous(current_members: list, previous_entry: dict) -> dict:
     result = {}
     for m in current_members:
         prev_tasks = prev_by_name.get(m["name"].lower(), [])
-        repeats = []
+        pairs = []
         for task in m["tasks"]:
+            best_match, best_ratio = None, 0.0
             for prev_task in prev_tasks:
-                if SequenceMatcher(None, task.lower(), prev_task.lower()).ratio() > 0.6:
-                    repeats.append(task)
-                    break
-        if repeats:
-            result[m["name"]] = repeats
+                ratio = SequenceMatcher(None, task.lower(), prev_task.lower()).ratio()
+                if ratio > best_ratio:
+                    best_match, best_ratio = prev_task, ratio
+            if best_ratio > 0.6:
+                pairs.append((task, best_match))
+        if pairs:
+            result[m["name"]] = pairs
     return result
+
+
+def flag_brief_updates(current_members: list, history: list) -> dict:
+    """
+    Purely objective, quantitative comparison — NOT sentiment/emotion
+    analysis. Flags when a person's update today has notably fewer words
+    per task than their own historical average across saved entries. This
+    is a factual verbosity observation only (e.g. "shorter than usual"),
+    deliberately avoiding any inference about mood, stress, or wellbeing —
+    a manager can use it as a cue to check in, not as a diagnosis.
+    Returns {name: (today_avg_words, historical_avg_words)}.
+    """
+    if len(history) < 2:
+        return {}  # need at least 2 past entries for a meaningful average
+
+    word_counts_by_name = {}
+    for entry in history:
+        for m in entry.get("members_detail", []):
+            name_key = m["name"].lower()
+            if not m["tasks"]:
+                continue
+            avg_words = sum(len(t.split()) for t in m["tasks"]) / len(m["tasks"])
+            word_counts_by_name.setdefault(name_key, []).append(avg_words)
+
+    flagged = {}
+    for m in current_members:
+        key = m["name"].lower()
+        past_avgs = word_counts_by_name.get(key, [])
+        if len(past_avgs) < 2 or not m["tasks"]:
+            continue
+        historical_avg = sum(past_avgs) / len(past_avgs)
+        today_avg = sum(len(t.split()) for t in m["tasks"]) / len(m["tasks"])
+        if historical_avg > 4 and today_avg < historical_avg * 0.5:
+            flagged[m["name"]] = (round(today_avg, 1), round(historical_avg, 1))
+    return flagged
 
 
 def dynamic_ta_height(text: str, min_h: int = 120, max_h: int = 500) -> int:
@@ -360,7 +442,21 @@ def build_narrative_prompt(tone, domain, lang, include_tomorrow, include_blocker
         ',\n  "blocker_summary": "Blockers identified today:\\n\\n[Name]: [Blocker detail].\\n(Write \\"No blockers reported today.\\" if none)"'
         if include_blockers else ""
     )
-    return _shared_instructions(tone, domain, lang) + f"""
+    blocker_guidance = (
+        """
+BLOCKER DETECTION: Identify blockers by MEANING, not by keyword-matching. A task
+is a blocker if it describes being stuck, waiting, or unable to proceed —
+including phrasing that doesn't contain an obvious keyword like "block", e.g.:
+- "Waiting on the vendor to confirm pricing" → blocker (waiting on external party)
+- "Need approval from finance before proceeding" → blocker (needs approval)
+- "Access request still pending with IT" → blocker (pending access)
+- "Can't reproduce the issue without prod data" → blocker (missing dependency)
+Do NOT treat a task as a blocker just because it mentions a bug or issue being
+WORKED ON or RESOLVED — only flag it if the person is genuinely stuck/waiting.
+"""
+        if include_blockers else ""
+    )
+    return _shared_instructions(tone, domain, lang) + blocker_guidance + f"""
 Return a JSON object with EXACTLY these keys:
 {{
   "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Date].\\n\\n[Name 1]: [narrative].\\n\\n[Name 2]: [narrative].\\n\\nThat concludes today's status update."{tomorrow_key}{blocker_key}
@@ -462,6 +558,28 @@ html, body, [class*="css"] { font-family:'Inter',sans-serif !important; color:va
     font-size:0.8rem; transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
 }
 body:has(#dmchk:checked) .dm-label::after { content:'☀️'; transform:translateX(28px); }
+
+/* ── FONT-SIZE ACCESSIBILITY CONTROL ── */
+html { font-size:16px; transition:font-size 0.2s ease; }
+html:has(#fsSmall:checked) { font-size:14px; }
+html:has(#fsLarge:checked) { font-size:18px; }
+#fsSmall, #fsNormal, #fsLarge { display:none; }
+.fs-toggle {
+    position:fixed; top:1.1rem; right:5.2rem; z-index:99999;
+    display:flex; gap:2px; background:var(--card-bg);
+    border:1.5px solid var(--card-bdr); border-radius:999px; padding:3px;
+    backdrop-filter:blur(10px); box-shadow:0 4px 14px rgba(0,0,0,0.1);
+}
+.fs-btn {
+    width:26px; height:24px; display:flex; align-items:center; justify-content:center;
+    border-radius:999px; font-size:0.7rem; font-weight:800; cursor:pointer;
+    color:var(--text-m); transition:all 0.2s ease;
+}
+#fsSmall:checked ~ label[for="fsSmall"],
+#fsNormal:checked ~ label[for="fsNormal"],
+#fsLarge:checked ~ label[for="fsLarge"] {
+    background:#D97757; color:#fff;
+}
 
 /* ── HERO ── */
 .hero-section { text-align:center; margin-bottom:2.5rem; position:relative; z-index:1; }
@@ -592,6 +710,29 @@ div[data-testid="stDateInput"] label, div[data-testid="stTextArea"] label {
 
 /* ── MEMBER CHIPS ── */
 .member-chips { display:flex; flex-wrap:wrap; gap:12px; margin-top:1.1rem; }
+
+/* ── SIDE-BY-SIDE DIFF PANEL — actual before/after comparison ── */
+.diff-panel {
+    margin-top:1rem; background:rgba(245,158,11,0.06);
+    border:1.5px solid rgba(245,158,11,0.25); border-radius:14px; padding:1rem 1.2rem;
+}
+.diff-panel-title { font-weight:800; font-size:0.85rem; color:#92400E; margin-bottom:0.7rem; }
+.diff-row { margin-bottom:0.7rem; }
+.diff-row:last-child { margin-bottom:0; }
+.diff-name { font-size:0.78rem; font-weight:700; color:var(--text-m); margin-bottom:0.3rem; }
+.diff-cols { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.diff-col {
+    flex:1; min-width:200px; font-size:0.82rem; line-height:1.4;
+    border-radius:8px; padding:0.5rem 0.7rem; position:relative;
+}
+.diff-label {
+    display:block; font-size:0.65rem; font-weight:800; letter-spacing:0.06em;
+    text-transform:uppercase; margin-bottom:0.2rem; opacity:0.7;
+}
+.diff-yesterday { background:rgba(148,163,184,0.12); color:var(--text-m); }
+.diff-today { background:rgba(217,119,87,0.12); color:var(--text-h); }
+.diff-arrow { font-size:1.1rem; color:#D97757; font-weight:700; flex-shrink:0; }
+@media (max-width:600px) { .diff-arrow { transform:rotate(90deg); } }
 .member-chip {
     background:var(--chip-bg); border:1.5px solid var(--chip-bdr); border-radius:14px;
     padding:0.7rem 1.1rem; backdrop-filter:blur(8px);
@@ -600,6 +741,10 @@ div[data-testid="stDateInput"] label, div[data-testid="stTextArea"] label {
 }
 .member-chip:hover { transform:translateY(-3px); box-shadow:0 10px 24px rgba(0,0,0,0.12); }
 @keyframes chipIn { from{opacity:0;transform:scale(0.9)} to{opacity:1;transform:scale(1)} }
+.member-chip:nth-child(1){animation-delay:0.00s} .member-chip:nth-child(2){animation-delay:0.08s}
+.member-chip:nth-child(3){animation-delay:0.16s} .member-chip:nth-child(4){animation-delay:0.24s}
+.member-chip:nth-child(5){animation-delay:0.32s} .member-chip:nth-child(6){animation-delay:0.40s}
+.member-chip:nth-child(7){animation-delay:0.48s} .member-chip:nth-child(8){animation-delay:0.56s}
 .chip-name  { font-weight:800; font-size:0.94rem; color:var(--text-h); }
 .chip-tasks { font-size:0.76rem; color:var(--text-m); margin-top:0.15rem; }
 .chip-block { font-size:0.72rem; color:#ef4444; font-weight:700; margin-top:0.2rem; }
@@ -655,7 +800,14 @@ body:has(#dmchk:checked) div[data-baseweb="menu"] [role="option"] * {
     max-width:580px; margin:1.5rem auto; box-shadow:0 28px 70px rgba(0,0,0,0.25);
     animation:loaderFadeIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
     border:1.5px solid rgba(255,255,255,0.12);
+    position:relative; overflow:hidden;
 }
+.loader-wrap::after {
+    content:''; position:absolute; top:0; left:-150%; width:100%; height:100%;
+    background:linear-gradient(100deg, transparent, rgba(217,119,87,0.1), transparent);
+    animation:loaderSweep 2.2s ease-in-out infinite;
+}
+@keyframes loaderSweep { to { left:150%; } }
 .loader-emoji { font-size:3.4rem; display:block; margin-bottom:0.9rem; animation:loaderBounce 1.4s ease-in-out infinite; }
 .loader-title { font-family:'Syne',sans-serif; font-size:1.35rem; font-weight:800; margin-bottom:0.35rem; color:var(--loader-title); }
 .loader-sub   { font-size:0.84rem; font-weight:600; margin-bottom:1.6rem; color:var(--loader-sub); }
@@ -838,6 +990,18 @@ details summary { color:var(--text-h) !important; font-weight:700 !important; cu
 st.markdown(CSS, unsafe_allow_html=True)
 st.markdown('<input type="checkbox" id="dmchk"><label for="dmchk" class="dm-label"></label>', unsafe_allow_html=True)
 
+st.markdown(
+    '<div class="fs-toggle">'
+    '<input type="radio" name="fontsize" id="fsSmall">'
+    '<input type="radio" name="fontsize" id="fsNormal" checked>'
+    '<input type="radio" name="fontsize" id="fsLarge">'
+    '<label for="fsSmall" class="fs-btn">A⁻</label>'
+    '<label for="fsNormal" class="fs-btn">A</label>'
+    '<label for="fsLarge" class="fs-btn">A⁺</label>'
+    '</div>',
+    unsafe_allow_html=True
+)
+
 # ═══════════════════════════════════════════════════
 # HERO
 # ═══════════════════════════════════════════════════
@@ -882,7 +1046,14 @@ with cfg4:
 
 cfg5, cfg6, cfg7 = st.columns(3)
 with cfg5:
-    project_name = st.text_input("📁 Project / Sprint Tag", placeholder="e.g. Phoenix · Sprint 14", key="pref_project")
+    # Pre-fill from the most recent saved entry — a lightweight "remembered"
+    # default rather than a separate storage mechanism, since the same
+    # persistent history file already carries this information.
+    _remembered_project = ""
+    if st.session_state.history and st.session_state.history[0].get("project") not in (None, "—"):
+        _remembered_project = st.session_state.history[0]["project"]
+    project_name = st.text_input("📁 Project / Sprint Tag", value=_remembered_project,
+                                 placeholder="e.g. Phoenix · Sprint 14", key="pref_project")
 with cfg6:
     include_tomorrow = st.checkbox("📅 Include Tomorrow's Plan", value=False, key="pref_tomorrow")
 with cfg7:
@@ -956,20 +1127,43 @@ if members:
         )
     st.markdown(f'<div class="member-chips">{chips}</div>', unsafe_allow_html=True)
 
-    # ── DIFF AGAINST YESTERDAY ──
+    # ── DIFF AGAINST YESTERDAY — actual side-by-side before/after ──
     if st.session_state.history:
-        repeats = diff_against_previous(members, st.session_state.history[0])
-        if repeats:
-            repeat_lines = "".join(
+        diffs = diff_against_previous(members, st.session_state.history[0])
+        if diffs:
+            rows = ""
+            for name, pairs in diffs.items():
+                for today_task, yesterday_task in pairs:
+                    rows += (
+                        f'<div class="diff-row">'
+                        f'<div class="diff-name">{name}</div>'
+                        f'<div class="diff-cols">'
+                        f'<div class="diff-col diff-yesterday"><span class="diff-label">Yesterday</span>{yesterday_task}</div>'
+                        f'<div class="diff-arrow">→</div>'
+                        f'<div class="diff-col diff-today"><span class="diff-label">Today</span>{today_task}</div>'
+                        f'</div></div>'
+                    )
+            st.markdown(
+                f'<div class="diff-panel">'
+                f'<div class="diff-panel-title">🔁 Possibly carried over from last update</div>'
+                f'{rows}</div>',
+                unsafe_allow_html=True
+            )
+
+        # ── BRIEF-UPDATE NOTICE — purely a word-count comparison against the
+        # person's own history, NOT a claim about mood or wellbeing. ──
+        brief_flags = flag_brief_updates(members, st.session_state.history)
+        if brief_flags:
+            brief_lines = "".join(
                 f'<div style="margin-top:0.3rem;"><strong>{name}:</strong> '
-                f'{", ".join(tasks)}</div>'
-                for name, tasks in repeats.items()
+                f'~{today}w vs usual ~{usual}w</div>'
+                for name, (today, usual) in brief_flags.items()
             )
             st.markdown(
-                f'<div style="margin-top:0.75rem;background:rgba(245,158,11,0.08);'
-                f'border:1.5px solid rgba(245,158,11,0.25);border-radius:12px;'
-                f'padding:0.7rem 1rem;font-size:0.85rem;color:#92400E;">'
-                f'🔁 <strong>Possibly carried over from last update:</strong>{repeat_lines}</div>',
+                f'<div style="margin-top:0.6rem;background:rgba(59,130,246,0.06);'
+                f'border:1.5px solid rgba(59,130,246,0.2);border-radius:12px;'
+                f'padding:0.7rem 1rem;font-size:0.85rem;color:#1E3A8A;">'
+                f'📏 <strong>Notably briefer than usual (word count only):</strong>{brief_lines}</div>',
                 unsafe_allow_html=True
             )
 
@@ -1081,6 +1275,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 "data": data, "members_detail": members,
             })
             st.session_state.history = st.session_state.history[:MAX_HISTORY]
+            save_history_to_disk(st.session_state.history)
 
             slot.empty()
             st.markdown("<br>", unsafe_allow_html=True)
@@ -1240,7 +1435,24 @@ if st.session_state.history:
 
         if st.button("🗑️ Clear all history", key="clear_hist"):
             st.session_state.history = []
+            save_history_to_disk(st.session_state.history)
             st.rerun()
+
+    # ── TEAM VELOCITY CHART — tasks reported per saved update, chronological ──
+    if len(st.session_state.history) >= 2:
+        import pandas as pd
+        chron = list(reversed(st.session_state.history))  # oldest first for the chart
+        chart_df = pd.DataFrame({
+            "Date":  [e["date"] for e in chron],
+            "Tasks": [e.get("tasks", 0) for e in chron],
+        }).set_index("Date")
+        st.markdown(
+            '<div style="font-weight:700;font-size:0.85rem;letter-spacing:0.04em;'
+            'text-transform:uppercase;color:var(--text-h);margin:1.5rem 0 0.5rem;">'
+            '📈 Team Velocity — Tasks per Saved Update</div>',
+            unsafe_allow_html=True
+        )
+        st.line_chart(chart_df, height=200)
 
     # ── WEEKLY ROLLUP — aggregates whatever's currently saved in history ──
     if len(st.session_state.history) >= 2:
