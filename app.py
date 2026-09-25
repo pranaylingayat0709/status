@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import json
 import re
 import os
@@ -21,34 +22,146 @@ st.set_page_config(
 # ═══════════════════════════════════════════════════
 # SESSION STATE
 # ═══════════════════════════════════════════════════
-HISTORY_FILE = ".sanghastatus_history.json"
+import sqlite3
+
+MAX_HISTORY  = 10
+HISTORY_FILE = ".sanghastatus_history.json"   # legacy file — auto-migrated into the DB below, then unused
+DB_FILE      = ".sanghastatus.db"
+
+
+def _get_db_conn():
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT, project TEXT, members INTEGER, tasks INTEGER,
+            tone TEXT, domain TEXT, lang TEXT,
+            data_json TEXT, members_detail_json TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    return conn
+
+# ═══════════════════════════════════════════════════
+# UNIFIED SETTINGS — shared with SatiCast
+# ═══════════════════════════════════════════════════
+# Same shared-settings file SatiCast writes to (see its own comment for the
+# full caveat): only actually shared across apps on the same filesystem —
+# otherwise this quietly falls back to "remembers your name in this app only".
+SHARED_SETTINGS_FILE = ".sati_sangha_shared_settings.json"
+
+
+def load_shared_settings() -> dict:
+    try:
+        if os.path.exists(SHARED_SETTINGS_FILE):
+            with open(SHARED_SETTINGS_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def save_shared_settings(updates: dict) -> None:
+    try:
+        current = load_shared_settings()
+        current.update(updates)
+        with open(SHARED_SETTINGS_FILE, "w") as f:
+            json.dump(current, f)
+    except Exception:
+        pass
+
+
+ROSTER_FILE = ".sanghastatus_roster.json"
+
+
+def load_roster() -> dict:
+    """Persisted team-member profile memory: {name_lower: {"display": str,
+    "role": str}}. Same shared-file caveat as history/settings — survives
+    refreshes on this deployment, not a per-user database."""
+    try:
+        if os.path.exists(ROSTER_FILE):
+            with open(ROSTER_FILE, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def save_roster(roster: dict) -> None:
+    try:
+        with open(ROSTER_FILE, "w") as f:
+            json.dump(roster, f)
+    except Exception:
+        pass
 
 
 def load_history_from_disk() -> list:
     """
-    Best-effort persistence across page refreshes within the SAME running
-    deployment. IMPORTANT CAVEAT: this is a single shared file on the
-    server's local disk — it survives a browser refresh or the app
-    sleeping/waking, but it is:
+    Persistence across page refreshes within the SAME running deployment,
+    now backed by a real SQLite database (.sanghastatus.db) instead of a
+    flat JSON file — proper indexing/querying, and it transparently
+    migrates any pre-existing JSON history file into the DB the first time
+    it runs. IMPORTANT CAVEAT (unchanged from the JSON version): this is
+    still a single database FILE on the server's local disk, so it is:
       - SHARED across every visitor to this deployment (not private per user)
       - LOST on a fresh redeploy or if the platform's filesystem is ephemeral
-    True per-user persistence would need a real database with user accounts.
-    This is appropriate for a small private/team deployment, not a public
-    multi-tenant one.
+    True per-user persistence would need a real client-server database with
+    user accounts. This is appropriate for a small private/team deployment,
+    not a public multi-tenant one.
     """
     try:
-        if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, "r") as f:
-                return json.load(f)
+        conn = _get_db_conn()
+        # One-time migration from the legacy JSON file, only if the DB is
+        # still empty — never overwrites DB rows that already exist.
+        if conn.execute("SELECT COUNT(*) FROM history").fetchone()[0] == 0 and os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, "r") as f:
+                    old_entries = json.load(f)
+                for e in reversed(old_entries):  # oldest first, so id order matches recency
+                    conn.execute(
+                        "INSERT INTO history (date, project, members, tasks, tone, domain, lang, data_json, members_detail_json) "
+                        "VALUES (?,?,?,?,?,?,?,?,?)",
+                        (e.get("date"), e.get("project"), e.get("members"), e.get("tasks"),
+                         e.get("tone"), e.get("domain"), e.get("lang"),
+                         json.dumps(e.get("data", {})), json.dumps(e.get("members_detail", [])))
+                    )
+                conn.commit()
+            except Exception:
+                pass
+        rows = conn.execute(
+            "SELECT date, project, members, tasks, tone, domain, lang, data_json, members_detail_json "
+            "FROM history ORDER BY id DESC LIMIT ?", (MAX_HISTORY,)
+        ).fetchall()
+        conn.close()
+        return [
+            {
+                "date": r[0], "project": r[1], "members": r[2], "tasks": r[3],
+                "tone": r[4], "domain": r[5], "lang": r[6],
+                "data": json.loads(r[7] or "{}"), "members_detail": json.loads(r[8] or "[]"),
+            }
+            for r in rows
+        ]
     except Exception:
-        pass
-    return []
+        return []
 
 
 def save_history_to_disk(history: list) -> None:
+    """Replaces the table contents with the current in-memory list — keeps
+    this a drop-in replacement for the old 'dump the whole list' JSON
+    writer so no call site elsewhere in the app needs to change."""
     try:
-        with open(HISTORY_FILE, "w") as f:
-            json.dump(history, f)
+        conn = _get_db_conn()
+        conn.execute("DELETE FROM history")
+        for e in reversed(history):  # reversed so autoincrement id order matches recency
+            conn.execute(
+                "INSERT INTO history (date, project, members, tasks, tone, domain, lang, data_json, members_detail_json) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (e.get("date"), e.get("project"), e.get("members"), e.get("tasks"),
+                 e.get("tone"), e.get("domain"), e.get("lang"),
+                 json.dumps(e.get("data", {})), json.dumps(e.get("members_detail", [])))
+            )
+        conn.commit()
+        conn.close()
     except Exception:
         pass  # read-only filesystem or other issue — fail silently, session-state still works
 
@@ -75,6 +188,53 @@ client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
     api_key=st.secrets["NVIDIA_API_KEY"]
 )
+
+# Optional: GitHub activity auto-pull. Only enabled when the deployer has
+# added their own credentials to Streamlit secrets — same opt-in pattern
+# as the weather/news API keys, so this stays fully invisible until
+# someone deliberately configures it. Requires a GitHub personal access
+# token (repo/read:user scope is enough) since the public API alone rate-
+# limits unauthenticated requests too aggressively for daily use.
+GITHUB_TOKEN    = st.secrets.get("GITHUB_TOKEN", "")
+GITHUB_USERNAME = st.secrets.get("GITHUB_USERNAME", "")
+GITHUB_PULL_ENABLED = bool(GITHUB_TOKEN and GITHUB_USERNAME)
+
+
+def fetch_github_activity(since_hours: int = 24) -> list:
+    """Best-effort pull of the configured user's recent commits across
+    their repos, formatted as ready-to-paste bullet lines. Returns [] on
+    any failure or if not configured — this is a convenience, never a
+    hard dependency."""
+    if not GITHUB_PULL_ENABLED:
+        return []
+    import requests as _requests
+    from datetime import timedelta as _timedelta
+    try:
+        since_iso = (datetime.utcnow() - _timedelta(hours=since_hours)).isoformat() + "Z"
+        headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
+        events_url = f"https://api.github.com/users/{GITHUB_USERNAME}/events?per_page=30"
+        r = _requests.get(events_url, headers=headers, timeout=8)
+        if r.status_code != 200:
+            return []
+        bullets = []
+        for ev in r.json():
+            if ev.get("created_at", "") < since_iso:
+                continue
+            if ev.get("type") == "PushEvent":
+                repo = ev.get("repo", {}).get("name", "")
+                for c in ev.get("payload", {}).get("commits", [])[:3]:
+                    msg = (c.get("message") or "").splitlines()[0][:100]
+                    if msg:
+                        bullets.append(f"- {msg} ({repo})")
+            elif ev.get("type") == "PullRequestEvent":
+                action = ev.get("payload", {}).get("action", "")
+                pr = ev.get("payload", {}).get("pull_request", {})
+                title = (pr.get("title") or "")[:100]
+                if title:
+                    bullets.append(f"- {action.capitalize()} PR: {title}")
+        return bullets[:10]
+    except Exception:
+        return []
 
 # ═══════════════════════════════════════════════════
 # CONSTANTS
@@ -106,8 +266,14 @@ LOADER_STAGES = [
     ("✨", "Finalising your update…",             "Running final quality check"),
 ]
 
-MAX_HISTORY = 10
-
+# Short flavor lines that rotate under the main loader stage, pure CSS —
+# see SatiCast's identical mechanism for the full explanation.
+LOADER_MICRO_COPY = [
+    "Untangling bullet points…",
+    "Finding each person's throughline…",
+    "Smoothing the rough edges…",
+    "Checking nobody got lost…",
+]
 
 # ═══════════════════════════════════════════════════
 # HELPERS
@@ -137,6 +303,38 @@ def parse_members(raw: str) -> list:
         if header and tasks:
             members.append({"name": header, "tasks": tasks, "blockers": blockers, "count": len(tasks)})
     return members
+
+
+DAY_SEP_RE = re.compile(
+    r'^\s*(?:[-=~_*]{2,}\s*)?'
+    r'(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-zA-Z]*|Day\s*\d+|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)'
+    r'\s*(?:[-=~_*]{2,})?\s*$',
+    re.IGNORECASE
+)
+
+
+def split_multi_day_paste(raw: str):
+    """Detects a bulk paste of several days' updates in one box (separated
+    by a date/day-name line, e.g. 'Monday', 'Day 2', '15/09', '=== Tue ===')
+    and splits it into (day_label, day_raw_text) segments. Returns an empty
+    list when fewer than 2 segments are found, since a single day's paste
+    should behave exactly as before."""
+    lines = raw.splitlines()
+    segments = []
+    current_label = None
+    current_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and DAY_SEP_RE.match(stripped):
+            if current_lines and any(l.strip() for l in current_lines):
+                segments.append((current_label or f"Day {len(segments)+1}", "\n".join(current_lines).strip()))
+            current_label = stripped.strip("-=~_* ")
+            current_lines = []
+        else:
+            current_lines.append(line)
+    if current_lines and any(l.strip() for l in current_lines):
+        segments.append((current_label or f"Day {len(segments)+1}", "\n".join(current_lines).strip()))
+    return segments if len(segments) > 1 else []
 
 
 DOMAIN_KEYWORDS = {
@@ -170,6 +368,32 @@ def looks_malformed(raw: str, members: list):
     if len(raw.strip().splitlines()) <= 2:
         return "This looks very short — make sure each person's tasks are on their own '-' bulleted lines."
     return None
+
+
+def word_diff_html(old_text: str, new_text: str) -> tuple:
+    """Word-level diff between two task strings, returned as (old_html,
+    new_html) with removed words wrapped in a red strike-through span in
+    old_html and added words wrapped in a green span in new_html — so the
+    'vs yesterday' panel shows what actually changed, not just two full
+    strings side by side."""
+    import html as _html
+    from difflib import SequenceMatcher
+    old_words = old_text.split()
+    new_words = new_text.split()
+    sm = SequenceMatcher(None, old_words, new_words)
+    old_parts, new_parts = [], []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        old_chunk = _html.escape(" ".join(old_words[i1:i2]))
+        new_chunk = _html.escape(" ".join(new_words[j1:j2]))
+        if tag == "equal":
+            old_parts.append(old_chunk)
+            new_parts.append(new_chunk)
+        else:
+            if old_chunk:
+                old_parts.append(f'<span class="diff-del">{old_chunk}</span>')
+            if new_chunk:
+                new_parts.append(f'<span class="diff-add">{new_chunk}</span>')
+    return " ".join(old_parts), " ".join(new_parts)
 
 
 def diff_against_previous(current_members: list, previous_entry: dict) -> dict:
@@ -270,7 +494,7 @@ def to_jira_confluence_markup(chat_update: str) -> str:
     return "\n".join(out_lines)
 
 
-def build_docx_export(data: dict, fmt_date: str):
+def build_docx_export(data: dict, fmt_date: str, prepared_by: str = ""):
     """Builds a Word document from the generated status update. Returns
     (bytes, None) on success, or (None, error_message) if python-docx
     isn't installed in this environment."""
@@ -282,6 +506,9 @@ def build_docx_export(data: dict, fmt_date: str):
 
     doc = Document()
     doc.add_heading(f"Daily Status Update — {fmt_date}", level=1)
+    if prepared_by:
+        p = doc.add_paragraph()
+        p.add_run(f"Prepared by {prepared_by}").italic = True
 
     doc.add_heading("Standup Narrative", level=2)
     doc.add_paragraph(data.get("standup_narrative", ""))
@@ -306,6 +533,40 @@ def build_docx_export(data: dict, fmt_date: str):
     return buf.read(), None
 
 
+def render_copy_button(text: str, unique_key: str, label: str = "📋 Copy"):
+    """A small copy-to-clipboard button with a genuine micro-interaction —
+    the label flips to a checkmark and briefly flashes green on success —
+    instead of a plain browser toast. Copies the text as generated (not
+    live edits made in the paired text_area, since reaching into that
+    DOM reliably across Streamlit versions isn't worth the fragility)."""
+    payload = json.dumps(text)
+    components.html(f"""
+    <div style="font-family:'Inter',sans-serif;">
+        <button id="copyBtn_{unique_key}" onclick="doCopy_{unique_key}()"
+            style="padding:5px 14px;border-radius:8px;border:1px solid #D97757;
+            background:transparent;color:#D97757;cursor:pointer;font-size:0.78rem;
+            font-weight:600;transition:all 0.2s ease;">{label}</button>
+    </div>
+    <script>
+        function doCopy_{unique_key}() {{
+            const btn = document.getElementById('copyBtn_{unique_key}');
+            navigator.clipboard.writeText({payload}).then(() => {{
+                btn.textContent = '✅ Copied!';
+                btn.style.background = '#22c55e';
+                btn.style.borderColor = '#22c55e';
+                btn.style.color = '#fff';
+                setTimeout(() => {{
+                    btn.textContent = '{label}';
+                    btn.style.background = 'transparent';
+                    btn.style.borderColor = '#D97757';
+                    btn.style.color = '#D97757';
+                }}, 1400);
+            }}).catch(() => {{ btn.textContent = '⚠️ Copy failed'; }});
+        }}
+    </script>
+    """, height=42)
+
+
 def mailto_link(subject: str, body: str) -> str:
     s = urllib.parse.quote(subject)
     b = urllib.parse.quote(body)
@@ -320,11 +581,20 @@ def render_loader(stage_idx: int) -> str:
         f'<div class="ld {"ldone" if i < stage_idx else ("lactive" if i == stage_idx else "")}"></div>'
         for i in range(total)
     ])
+    n_micro = len(LOADER_MICRO_COPY)
+    slot_secs = 2.5
+    loop_secs = n_micro * slot_secs
+    micro_spans = "".join(
+        f'<span class="loader-micro-item" style="animation-duration:{loop_secs}s;'
+        f'animation-delay:-{i*slot_secs}s;">{line}</span>'
+        for i, line in enumerate(LOADER_MICRO_COPY)
+    )
     return (
         f'<div class="loader-wrap">'
         f'<div class="loader-emoji">{emoji}</div>'
         f'<div class="loader-title">{title}</div>'
         f'<div class="loader-sub">{sub} &nbsp;·&nbsp; {stage_idx+1}/{total}</div>'
+        f'<div class="loader-micro">{micro_spans}</div>'
         f'<div class="loader-dots">{dots}</div>'
         f'<div class="loader-bar-bg"><div class="loader-bar-fg" style="width:{pct}%"></div></div>'
         f'<div class="loader-pct">{pct}%</div>'
@@ -709,7 +979,10 @@ div[data-testid="stDateInput"] label, div[data-testid="stTextArea"] label {
 .stCheckbox label p { color:var(--text-h) !important; font-weight:600 !important; }
 
 /* ── MEMBER CHIPS ── */
-.member-chips { display:flex; flex-wrap:wrap; gap:12px; margin-top:1.1rem; }
+/* Kanban-style board layout — uniform grid columns instead of a loose
+   flex-wrap row, so member cards line up like board cards rather than
+   free-floating chips. */
+.member-chips { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:12px; margin-top:1.1rem; }
 
 /* ── SIDE-BY-SIDE DIFF PANEL — actual before/after comparison ── */
 .diff-panel {
@@ -733,11 +1006,21 @@ div[data-testid="stDateInput"] label, div[data-testid="stTextArea"] label {
 .diff-today { background:rgba(217,119,87,0.12); color:var(--text-h); }
 .diff-arrow { font-size:1.1rem; color:#D97757; font-weight:700; flex-shrink:0; }
 @media (max-width:600px) { .diff-arrow { transform:rotate(90deg); } }
+/* Word-level diff highlighting inside the yesterday/today panel above. */
+.diff-del { background:rgba(239,68,68,0.18); color:#991B1B; text-decoration:line-through; border-radius:3px; padding:0 2px; }
+.diff-add { background:rgba(34,197,94,0.18); color:#166534; border-radius:3px; padding:0 2px; font-weight:700; }
 .member-chip {
     background:var(--chip-bg); border:1.5px solid var(--chip-bdr); border-radius:14px;
     padding:0.7rem 1.1rem; backdrop-filter:blur(8px);
     transition:transform 0.2s ease, box-shadow 0.2s ease;
     animation:chipIn 0.4s ease both;
+    position:relative;
+}
+.chip-count-badge {
+    position:absolute; top:-8px; right:-8px; min-width:22px; height:22px; border-radius:50%;
+    background:#D97757; color:#fff; font-size:0.68rem; font-weight:800;
+    display:flex; align-items:center; justify-content:center; padding:0 4px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.2);
 }
 .member-chip:hover { transform:translateY(-3px); box-shadow:0 10px 24px rgba(0,0,0,0.12); }
 @keyframes chipIn { from{opacity:0;transform:scale(0.9)} to{opacity:1;transform:scale(1)} }
@@ -822,6 +1105,22 @@ body:has(#dmchk:checked) div[data-baseweb="menu"] [role="option"] * {
     transition:width 0.4s cubic-bezier(0.4,0,0.2,1);
 }
 .loader-pct { font-size:0.8rem; font-weight:800; letter-spacing:0.06em; color:var(--loader-sub); }
+
+/* ── ROTATING MICRO-COPY — same pure-CSS technique as SatiCast. ── */
+.loader-micro { position:relative; height:1.2rem; margin:0.4rem 0 0.8rem; }
+.loader-micro-item {
+    position:absolute; left:0; right:0; text-align:center;
+    font-size:0.78rem; font-style:italic; color:#B45532; opacity:0;
+    animation-name:microCycle; animation-timing-function:ease-in-out; animation-iteration-count:infinite;
+}
+body:has(#dmchk:checked) .loader-micro-item { color:#E8A87C; }
+@keyframes microCycle {
+    0% { opacity:0; }
+    3% { opacity:1; }
+    16% { opacity:1; }
+    20% { opacity:0; }
+    100% { opacity:0; }
+}
 
 /* ── OUTPUT GRID: 2 columns wide-screen ── */
 .output-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
@@ -974,6 +1273,37 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .hist-date { font-family:'Syne',sans-serif; font-size:0.95rem; font-weight:800; color:var(--text-h); }
 .hist-meta { font-size:0.76rem; color:var(--text-m); margin-top:0.2rem; }
 
+/* ── EMPTY STATES — a consistent, illustrated placeholder instead of a
+   blank card when there's nothing to show yet. ── */
+.empty-state {
+    text-align:center; padding:2.5rem 1.5rem; border-radius:18px;
+    border:1.5px dashed var(--card-bdr); margin-top:1rem;
+    animation:fadeUp 0.5s ease both;
+}
+.empty-state-icon { font-size:2.4rem; margin-bottom:0.6rem; opacity:0.7; }
+.empty-state-title { font-weight:800; font-size:1rem; color:var(--text-h); margin-bottom:0.4rem; }
+.empty-state-sub { font-size:0.82rem; color:var(--text-m); max-width:420px; margin:0 auto; line-height:1.5; }
+
+/* ── VISUAL TIMELINE — dots + connecting line, an at-a-glance overview
+   of saved standups before drilling into any single entry. ── */
+.timeline-wrap {
+    position:relative; display:flex; overflow-x:auto; gap:0;
+    padding:1.6rem 0.5rem 0.8rem; margin-bottom:0.5rem;
+}
+.timeline-line {
+    position:absolute; top:1.9rem; left:2rem; right:2rem; height:2px;
+    background:linear-gradient(90deg, rgba(217,119,87,0.15), rgba(217,119,87,0.5), rgba(217,119,87,0.15));
+}
+.tl-node { position:relative; flex:0 0 92px; text-align:center; z-index:1; }
+.tl-dot {
+    width:14px; height:14px; border-radius:50%; background:#D97757; margin:0 auto 0.5rem;
+    border:3px solid var(--card-bg); box-shadow:0 0 0 2px rgba(217,119,87,0.35);
+    transition:transform 0.15s ease;
+}
+.tl-node:hover .tl-dot { transform:scale(1.35); }
+.tl-label { font-size:0.68rem; font-weight:700; color:var(--text-h); white-space:nowrap; }
+.tl-sub { font-size:0.62rem; color:var(--text-m); }
+
 details { background:var(--card-bg) !important; border-radius:18px !important; border:1.5px solid var(--card-bdr) !important; padding:0.5rem 1rem !important; margin-bottom:1rem !important; }
 details summary { color:var(--text-h) !important; font-weight:700 !important; cursor:pointer; }
 
@@ -988,7 +1318,100 @@ details summary { color:var(--text-h) !important; font-weight:700 !important; cu
 """
 
 st.markdown(CSS, unsafe_allow_html=True)
-st.markdown('<input type="checkbox" id="dmchk"><label for="dmchk" class="dm-label"></label>', unsafe_allow_html=True)
+st.markdown(
+    '<input type="checkbox" id="dmchk" aria-label="Toggle dark mode">'
+    '<label for="dmchk" class="dm-label" role="switch" aria-label="Dark mode switch" tabindex="0" '
+    'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();document.getElementById(\'dmchk\').click();}"></label>',
+    unsafe_allow_html=True
+)
+
+# Command palette (Cmd/Ctrl+K) — same mechanism as SatiCast's: finds real
+# elements in the parent document and clicks them, best-effort.
+components.html("""
+<script>
+try {
+  const doc = window.parent.document;
+  if (!doc.getElementById('sanghaCmdPalette')) {
+    const overlay = doc.createElement('div');
+    overlay.id = 'sanghaCmdPalette';
+    overlay.style.cssText = 'display:none;position:fixed;inset:0;z-index:999998;'
+      + 'background:rgba(0,0,0,0.45);align-items:flex-start;justify-content:center;padding-top:12vh;';
+    overlay.innerHTML = `
+      <div style="background:var(--card-bg,#fff);border-radius:16px;padding:0.6rem;width:min(420px,90vw);
+                  box-shadow:0 24px 60px rgba(0,0,0,0.3);font-family:'Inter',sans-serif;">
+        <div style="padding:0.5rem 0.7rem;font-size:0.7rem;font-weight:700;letter-spacing:0.05em;
+                    text-transform:uppercase;opacity:0.55;">Quick Actions &nbsp;·&nbsp; Esc to close</div>
+        <button data-cmd="generate" class="sangha-cmd-item">✨ &nbsp;Generate Professional Status</button>
+        <button data-cmd="darkmode" class="sangha-cmd-item">🌗 &nbsp;Toggle Dark Mode</button>
+        <button data-cmd="top" class="sangha-cmd-item">⬆️ &nbsp;Scroll to Top</button>
+      </div>`;
+    doc.body.appendChild(overlay);
+    const style = doc.createElement('style');
+    style.textContent = '.sangha-cmd-item { display:block; width:100%; text-align:left; padding:0.7rem 0.8rem; '
+      + 'border:none; background:transparent; border-radius:10px; cursor:pointer; font-size:0.9rem; '
+      + 'color:inherit; margin-bottom:2px; } .sangha-cmd-item:hover { background:rgba(217,119,87,0.14); }';
+    doc.head.appendChild(style);
+
+    function closePalette() { overlay.style.display = 'none'; }
+    function openPalette() { overlay.style.display = 'flex'; }
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closePalette(); });
+
+    overlay.querySelectorAll('.sangha-cmd-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cmd = btn.dataset.cmd;
+        if (cmd === 'darkmode') {
+          const cb = doc.getElementById('dmchk');
+          if (cb) cb.click();
+        } else if (cmd === 'top') {
+          (doc.scrollingElement || doc.documentElement).scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (cmd === 'generate') {
+          const btns = Array.from(doc.querySelectorAll('button'));
+          const target = btns.find(b => b.textContent.includes('Generate Professional Status'));
+          if (target) target.click();
+        }
+        closePalette();
+      });
+    });
+
+    doc.defaultView.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        overlay.style.display === 'flex' ? closePalette() : openPalette();
+      } else if (e.key === 'Escape') {
+        closePalette();
+      }
+    });
+  }
+} catch (e) {}
+</script>
+""", height=0, width=0)
+
+# Auto-detect the OS/browser color-scheme preference on first visit only.
+# Once the person has clicked the toggle themselves, their explicit choice
+# (saved in the parent page's localStorage) always wins over the OS setting.
+components.html("""
+<script>
+try {
+  const doc = window.parent.document;
+  const cb  = doc.getElementById('dmchk');
+  if (cb) {
+    const KEY = 'sanghastatus_dm_user_set';
+    const userSet = doc.defaultView.localStorage.getItem(KEY);
+    if (!userSet) {
+      const prefersDark = doc.defaultView.matchMedia
+        && doc.defaultView.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (prefersDark && !cb.checked) { cb.click(); }
+    }
+    if (!cb.dataset.sanghaListenerBound) {
+      cb.dataset.sanghaListenerBound = "1";
+      cb.addEventListener('change', () => {
+        doc.defaultView.localStorage.setItem(KEY, '1');
+      });
+    }
+  }
+} catch (e) {}
+</script>
+""", height=0, width=0)
 
 st.markdown(
     '<div class="fs-toggle">'
@@ -1059,6 +1482,45 @@ with cfg6:
 with cfg7:
     include_blockers = st.checkbox("🚧 Highlight Blockers", value=True, key="pref_blockers")
 
+if "pref_your_name" not in st.session_state:
+    st.session_state.pref_your_name = load_shared_settings().get("your_name", "")
+your_name = st.text_input("👤 Your Name (optional — used as 'Prepared by' in exports · shared with SatiCast)",
+                          placeholder="e.g. Pranay", key="pref_your_name")
+if your_name.strip():
+    save_shared_settings({"your_name": your_name.strip()})
+
+# ── SETTINGS EXPORT / IMPORT — same idea as SatiCast's: download your
+# preferences as JSON, restore them on a fresh browser/session. ──
+with st.expander("⚙️ Export / Import Settings", expanded=False):
+    _settings_snapshot = {
+        "pref_tone": st.session_state.get("pref_tone"),
+        "pref_domain": st.session_state.get("pref_domain"),
+        "pref_lang": st.session_state.get("pref_lang"),
+        "pref_project": st.session_state.get("pref_project"),
+        "pref_tomorrow": st.session_state.get("pref_tomorrow"),
+        "pref_blockers": st.session_state.get("pref_blockers"),
+        "pref_your_name": st.session_state.get("pref_your_name"),
+    }
+    ecol1, ecol2 = st.columns(2)
+    with ecol1:
+        st.download_button(
+            "⬇️ Download my settings", data=json.dumps(_settings_snapshot, indent=2),
+            file_name="sanghastatus_settings.json", mime="application/json",
+            key="dl_settings_btn", use_container_width=True
+        )
+    with ecol2:
+        _uploaded_settings = st.file_uploader("Restore from file", type=["json"], key="settings_upload", label_visibility="collapsed")
+        if _uploaded_settings is not None:
+            try:
+                _restored = json.load(_uploaded_settings)
+                for _k, _v in _restored.items():
+                    if _v is not None:
+                        st.session_state[_k] = _v
+                st.success("✅ Settings restored — refresh above widgets by re-running.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Couldn't read that settings file: {e}")
+
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════
@@ -1090,8 +1552,34 @@ Carol:
 - Reviewing PR for auth module.
 """,
     label_visibility="collapsed",
-    key="raw_input"
+    key="raw_input",
+    help="🎙️ Tip: use your keyboard's dictation button (mic icon on the on-screen/OS keyboard) to speak your update — it types straight into this box like any other text."
 )
+
+if GITHUB_PULL_ENABLED:
+    if st.button(f"🔽 Pull my GitHub activity (last 24h) — {GITHUB_USERNAME}", key="pull_github_btn"):
+        gh_bullets = fetch_github_activity(24)
+        if gh_bullets:
+            existing = st.session_state.get("raw_input", "")
+            block = f"{GITHUB_USERNAME}:\n" + "\n".join(gh_bullets)
+            st.session_state.raw_input = (existing.rstrip() + "\n\n" + block).strip() if existing.strip() else block
+            st.rerun()
+        else:
+            st.caption("No GitHub activity found in the last 24h, or the pull failed.")
+
+_day_segments = split_multi_day_paste(raw_updates) if raw_updates.strip() else []
+if _day_segments:
+    st.caption(f"📚 Looks like {len(_day_segments)} days' worth of updates pasted at once — pick one to generate now (paste the rest again later, or use ➡️ Load to swap in a different day).")
+    day_labels = [lbl for lbl, _ in _day_segments]
+    dcol1, dcol2 = st.columns([3, 1])
+    with dcol1:
+        picked_day_label = st.selectbox("Which day to generate for right now?", options=day_labels, key="multi_day_pick")
+    with dcol2:
+        st.write("")
+        if st.button("➡️ Load this day", key="load_multi_day", use_container_width=True):
+            picked_raw = next(txt for lbl, txt in _day_segments if lbl == picked_day_label)
+            st.session_state.raw_input = picked_raw
+            st.rerun()
 
 members = parse_members(raw_updates) if raw_updates.strip() else []
 
@@ -1110,22 +1598,66 @@ if members:
         f'</div>',
         unsafe_allow_html=True
     )
+    _roster = load_roster()
     chips = ""
     avatar_colors = ["#D97757", "#B45532", "#23a6d5", "#23d5ab", "#f59e0b", "#ef4444"]
+    # Role → accent color, reusing the same keyword families as the domain
+    # detector so a "Backend Engineer" and a "QA Lead" get visually
+    # distinct stripes even within one mixed team.
+    ROLE_ACCENT_PALETTE = {
+        "dev": "#23a6d5", "engineer": "#23a6d5", "backend": "#23a6d5", "frontend": "#23a6d5",
+        "qa": "#23d5ab", "test": "#23d5ab",
+        "devops": "#f59e0b", "infra": "#f59e0b", "sre": "#f59e0b",
+        "design": "#ec4899", "ux": "#ec4899",
+        "product": "#8b5cf6", "pm": "#8b5cf6",
+        "hr": "#14b8a6", "recruit": "#14b8a6",
+        "finance": "#84cc16",
+    }
+
+    def _role_accent(role: str) -> str:
+        role_l = role.lower()
+        for kw, color in ROLE_ACCENT_PALETTE.items():
+            if kw in role_l:
+                return color
+        return "transparent"
+
     for i, m in enumerate(members):
         bl = (f'<div class="chip-block">⚠️ {len(m["blockers"])} blocker{"s" if len(m["blockers"])>1 else ""}</div>'
               if m["blockers"] else "")
         initial = m["name"].strip()[:1].upper() or "?"
         color = avatar_colors[i % len(avatar_colors)]
+        role = _roster.get(m["name"].lower(), {}).get("role", "")
+        role_html = f'<div class="chip-tasks" style="opacity:0.75;">{role}</div>' if role else ""
+        accent = _role_accent(role)
         chips += (
-            f'<div class="member-chip" style="display:flex;align-items:center;gap:10px;">'
+            f'<div class="member-chip" style="display:flex;align-items:center;gap:10px;'
+            f'border-left:4px solid {accent};">'
+            f'<div class="chip-count-badge">{m["count"]}</div>'
             f'<div style="width:32px;height:32px;border-radius:50%;background:{color};'
             f'color:#fff;display:flex;align-items:center;justify-content:center;'
             f'font-weight:800;font-size:0.9rem;flex-shrink:0;">{initial}</div>'
-            f'<div><div class="chip-name">{m["name"]}</div>'
+            f'<div><div class="chip-name">{m["name"]}</div>{role_html}'
             f'<div class="chip-tasks">{m["count"]} task{"s" if m["count"]!=1 else ""}</div>{bl}</div></div>'
         )
     st.markdown(f'<div class="member-chips">{chips}</div>', unsafe_allow_html=True)
+
+    # ── TEAM ROSTER — profile memory (role tag per member, remembered
+    # across runs so it doesn't need re-entering every standup) ──
+    with st.expander("👥 Team Roster — tag each member's role (remembered next time)", expanded=False):
+        roster_changed = False
+        for m in members:
+            key = m["name"].lower()
+            current_role = _roster.get(key, {}).get("role", "")
+            new_role = st.text_input(
+                f"Role for {m['name']}", value=current_role,
+                placeholder="e.g. Backend Engineer, QA Lead…",
+                key=f"roster_role_{key}"
+            )
+            if new_role.strip() != current_role:
+                _roster[key] = {"display": m["name"], "role": new_role.strip()}
+                roster_changed = True
+        if roster_changed:
+            save_roster(_roster)
 
     # ── DIFF AGAINST YESTERDAY — actual side-by-side before/after ──
     if st.session_state.history:
@@ -1134,13 +1666,14 @@ if members:
             rows = ""
             for name, pairs in diffs.items():
                 for today_task, yesterday_task in pairs:
+                    old_html, new_html = word_diff_html(yesterday_task, today_task)
                     rows += (
                         f'<div class="diff-row">'
                         f'<div class="diff-name">{name}</div>'
                         f'<div class="diff-cols">'
-                        f'<div class="diff-col diff-yesterday"><span class="diff-label">Yesterday</span>{yesterday_task}</div>'
+                        f'<div class="diff-col diff-yesterday"><span class="diff-label">Yesterday</span>{old_html}</div>'
                         f'<div class="diff-arrow">→</div>'
-                        f'<div class="diff-col diff-today"><span class="diff-label">Today</span>{today_task}</div>'
+                        f'<div class="diff-col diff-today"><span class="diff-label">Today</span>{new_html}</div>'
                         f'</div></div>'
                     )
             st.markdown(
@@ -1166,6 +1699,16 @@ if members:
                 f'📏 <strong>Notably briefer than usual (word count only):</strong>{brief_lines}</div>',
                 unsafe_allow_html=True
             )
+else:
+    st.markdown(
+        '<div class="empty-state">'
+        '<div class="empty-state-icon">📝</div>'
+        '<div class="empty-state-title">Paste your team\'s updates to get started</div>'
+        '<div class="empty-state-sub">One line per person as a header (e.g. "Alice:"), followed by bullet points — '
+        'members, tasks and blockers are detected automatically.</div>'
+        '</div>',
+        unsafe_allow_html=True
+    )
 
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1301,6 +1844,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 unsafe_allow_html=True
             )
             st.text_area("Narrative", narrative, height=dynamic_ta_height(narrative), key="edit_narrative", label_visibility="collapsed")
+            render_copy_button(narrative, "narrative")
             st.markdown("</div>", unsafe_allow_html=True)
 
             # Chat + WhatsApp side by side
@@ -1310,6 +1854,35 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 unsafe_allow_html=True
             )
             st.text_area("Chat", chat, height=dynamic_ta_height(chat), key="edit_chat", label_visibility="collapsed")
+            render_copy_button(chat, "chat")
+            with st.expander("🔗 Send directly to Slack", expanded=False):
+                st.caption(
+                    "Paste your Slack **Incoming Webhook URL** (Slack → Apps → Incoming Webhooks) — "
+                    "it's used once for this send and isn't stored anywhere."
+                )
+                slack_webhook_url = st.text_input(
+                    "Slack Webhook URL", placeholder="https://hooks.slack.com/services/…",
+                    key="slack_webhook_url", type="password", label_visibility="collapsed"
+                )
+                if st.button("📤 Send to Slack", key="send_slack_btn"):
+                    if not slack_webhook_url.strip():
+                        st.warning("Paste a webhook URL first.")
+                    elif not slack_webhook_url.startswith("https://hooks.slack.com/"):
+                        st.warning("That doesn't look like a Slack webhook URL (should start with https://hooks.slack.com/…).")
+                    else:
+                        try:
+                            import requests as _requests
+                            resp = _requests.post(
+                                slack_webhook_url.strip(),
+                                json={"text": st.session_state.get("edit_chat", chat)},
+                                timeout=8
+                            )
+                            if resp.status_code == 200:
+                                st.success("✅ Sent to Slack!")
+                            else:
+                                st.error(f"Slack responded with {resp.status_code}: {resp.text[:200]}")
+                        except Exception as e:
+                            st.error(f"Couldn't reach Slack: {e}")
             st.markdown("</div>", unsafe_allow_html=True)
 
             st.markdown(
@@ -1318,6 +1891,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 unsafe_allow_html=True
             )
             st.text_area("WhatsApp", wa, height=dynamic_ta_height(wa), key="edit_whatsapp", label_visibility="collapsed")
+            render_copy_button(wa, "whatsapp")
             st.markdown("</div>", unsafe_allow_html=True)
 
             # Jira/Confluence markup — derived instantly from chat_update, no extra API call
@@ -1339,6 +1913,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 unsafe_allow_html=True
             )
             st.text_area("Email", email_raw, height=dynamic_ta_height(email_raw), key="edit_email", label_visibility="collapsed")
+            render_copy_button(email_raw, "email")
             st.markdown("</div>", unsafe_allow_html=True)
 
             if include_tomorrow and data.get("tomorrow_plan"):
@@ -1370,7 +1945,7 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 unsafe_allow_html=True
             )
 
-            docx_bytes, docx_err = build_docx_export(data, fmt_date)
+            docx_bytes, docx_err = build_docx_export(data, fmt_date, prepared_by=your_name.strip())
             if docx_bytes:
                 st.download_button(
                     "⬇️ Download as Word (.docx)", data=docx_bytes,
@@ -1406,6 +1981,22 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
 # ═══════════════════════════════════════════════════
 if st.session_state.history:
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── VISUAL TIMELINE — dots + connecting line, newest first, as an
+    # at-a-glance overview before drilling into any single entry below. ──
+    _tl_dots = "".join(
+        f'<div class="tl-node">'
+        f'<div class="tl-dot" title="{e["date"]}"></div>'
+        f'<div class="tl-label">{e["date"].split(" · ")[0]}</div>'
+        f'<div class="tl-sub">{e.get("tasks", 0)} tasks</div>'
+        f'</div>'
+        for e in st.session_state.history
+    )
+    st.markdown(
+        f'<div class="timeline-wrap"><div class="timeline-line"></div>{_tl_dots}</div>',
+        unsafe_allow_html=True
+    )
+
     with st.expander(f"🕘 Past Standups ({len(st.session_state.history)} saved) — click to expand & replay", expanded=False):
         for idx, entry in enumerate(st.session_state.history):
             st.markdown(
@@ -1453,6 +2044,43 @@ if st.session_state.history:
             unsafe_allow_html=True
         )
         st.line_chart(chart_df, height=200)
+        st.download_button(
+            "⬇️ Download velocity data (.csv)",
+            data=chart_df.reset_index().to_csv(index=False),
+            file_name="team_velocity.csv", mime="text/csv",
+            key="dl_velocity_csv"
+        )
+
+        # ── PER-PERSON TREND VIEW — expands the brevity flag into a full
+        # per-member chart (task count + avg words/task across saved runs),
+        # so a manager can see one person's pattern over time, not just
+        # today's single-run flag.
+        all_names = sorted({
+            m["name"] for e in st.session_state.history
+            for m in e.get("members_detail", [])
+        })
+        if all_names:
+            with st.expander("👤 Per-Person Trend View", expanded=False):
+                picked_member = st.selectbox("Team member", options=all_names, key="trend_member_pick")
+                rows = []
+                for e in chron:
+                    match = next((m for m in e.get("members_detail", []) if m["name"] == picked_member), None)
+                    if match:
+                        n_tasks = len(match["tasks"])
+                        avg_words = round(sum(len(t.split()) for t in match["tasks"]) / n_tasks, 1) if n_tasks else 0
+                        rows.append({"Date": e["date"], "Tasks": n_tasks, "Avg words/task": avg_words})
+                if len(rows) >= 2:
+                    trend_df = pd.DataFrame(rows).set_index("Date")
+                    st.line_chart(trend_df, height=200)
+                    st.caption(f"📌 {picked_member} appears in {len(rows)} of {len(st.session_state.history)} saved updates.")
+                    st.download_button(
+                        f"⬇️ Download {picked_member}'s trend data (.csv)",
+                        data=trend_df.reset_index().to_csv(index=False),
+                        file_name=f"{picked_member.lower().replace(' ', '_')}_trend.csv", mime="text/csv",
+                        key="dl_trend_csv"
+                    )
+                else:
+                    st.caption(f"Not enough saved history for {picked_member} yet — need at least 2 updates mentioning them.")
 
     # ── WEEKLY ROLLUP — aggregates whatever's currently saved in history ──
     if len(st.session_state.history) >= 2:
@@ -1479,3 +2107,18 @@ if st.session_state.history:
                               file_name=f"weekly_rollup_{date.today().isoformat()}.txt",
                               mime="text/plain", key="dl_rollup")
             st.markdown("</div>", unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════
+# SUITE FOOTER — cross-link back to SatiCast. Only shown when the deployer
+# has set SATICAST_URL in secrets.
+# ═══════════════════════════════════════════════════
+_sibling_url = st.secrets.get("SATICAST_URL", "")
+if _sibling_url:
+    st.markdown(
+        f'<div style="text-align:center;margin:2.5rem 0 1rem;padding-top:1.2rem;'
+        f'border-top:1px solid rgba(217,119,87,0.15);font-size:0.8rem;opacity:0.75;">'
+        f'🏛️ SanghaStatus &nbsp;·&nbsp; part of the same suite as '
+        f'<a href="{_sibling_url}" target="_blank" style="color:#D97757;font-weight:700;">🪷 SatiCast</a>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
