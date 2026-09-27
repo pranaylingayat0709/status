@@ -231,8 +231,25 @@ def fetch_github_activity(since_hours: int = 24) -> list:
                 pr = ev.get("payload", {}).get("pull_request", {})
                 title = (pr.get("title") or "")[:100]
                 if title:
-                    bullets.append(f"- {action.capitalize()} PR: {title}")
-        return bullets[:10]
+                    line = f"- {action.capitalize()} PR: {title}"
+                    body = (pr.get("body") or "").strip().splitlines()
+                    body_line = next((b.strip() for b in body if b.strip()), "")
+                    if body_line:
+                        line += f" — {body_line[:100]}"
+                    bullets.append(line)
+            elif ev.get("type") == "PullRequestReviewEvent":
+                pr = ev.get("payload", {}).get("pull_request", {})
+                state = ev.get("payload", {}).get("review", {}).get("state", "").replace("_", " ")
+                title = (pr.get("title") or "")[:80]
+                if title and state:
+                    bullets.append(f"- Reviewed PR ({state}): {title}")
+            elif ev.get("type") == "IssuesEvent":
+                action = ev.get("payload", {}).get("action", "")
+                issue = ev.get("payload", {}).get("issue", {})
+                title = (issue.get("title") or "")[:100]
+                if title and action in ("opened", "closed"):
+                    bullets.append(f"- {action.capitalize()} issue: {title}")
+        return bullets[:12]
     except Exception:
         return []
 
@@ -460,6 +477,39 @@ def flag_brief_updates(current_members: list, history: list) -> dict:
     return flagged
 
 
+def flag_recurring_blockers(current_members: list, history: list) -> dict:
+    """
+    Flags a blocker as needing escalation once a closely-matching blocker
+    text has appeared for the same person across 2+ PRIOR saved entries
+    (so 3+ days running including today). Uses the same fuzzy-match
+    approach as diff_against_previous — this is about how long a blocker
+    has persisted, not any judgment about why. Returns
+    {name: [(blocker_text, days_seen), ...]} for blockers at or above the
+    threshold.
+    """
+    if not history:
+        return {}
+    from difflib import SequenceMatcher
+    escalations = {}
+    for m in current_members:
+        if not m.get("blockers"):
+            continue
+        name_key = m["name"].lower()
+        for blocker in m["blockers"]:
+            days_seen = 1  # today
+            for entry in history:
+                prev_blockers = next(
+                    (pm["blockers"] for pm in entry.get("members_detail", [])
+                     if pm["name"].lower() == name_key), []
+                )
+                if any(SequenceMatcher(None, blocker.lower(), pb.lower()).ratio() > 0.6
+                       for pb in prev_blockers):
+                    days_seen += 1
+            if days_seen >= 3:
+                escalations.setdefault(m["name"], []).append((blocker, days_seen))
+    return escalations
+
+
 def dynamic_ta_height(text: str, min_h: int = 120, max_h: int = 500) -> int:
     """
     Sizes a text_area to fit its actual content instead of a fixed height
@@ -489,6 +539,46 @@ def to_jira_confluence_markup(chat_update: str) -> str:
             out_lines.append(f"* {stripped.lstrip('-').strip()}")
         elif stripped:
             out_lines.append(f"h2. {stripped}")
+        else:
+            out_lines.append("")
+    return "\n".join(out_lines)
+
+
+def to_teams_markup(chat_update: str) -> str:
+    """
+    Deterministic transform into Microsoft Teams-flavored markdown.
+    Teams supports standard markdown headers/bullets, so this mainly
+    upgrades "• Name" lines to a bold sub-heading and keeps bullets as-is.
+    """
+    out_lines = []
+    for line in chat_update.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("•"):
+            out_lines.append(f"**{stripped.lstrip('•').strip()}**")
+        elif stripped.startswith("-"):
+            out_lines.append(f"- {stripped.lstrip('-').strip()}")
+        elif stripped:
+            out_lines.append(f"### {stripped}")
+        else:
+            out_lines.append("")
+    return "\n".join(out_lines)
+
+
+def to_discord_markup(chat_update: str) -> str:
+    """
+    Deterministic transform into Discord-flavored markdown. Discord has no
+    H1/H2, so section titles become bold-underline, names become bold, and
+    a blockquote (">") style is used for the header line for visual pop.
+    """
+    out_lines = []
+    for line in chat_update.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("•"):
+            out_lines.append(f"**{stripped.lstrip('•').strip()}**")
+        elif stripped.startswith("-"):
+            out_lines.append(f"• {stripped.lstrip('-').strip()}")
+        elif stripped:
+            out_lines.append(f"__**{stripped}**__")
         else:
             out_lines.append("")
     return "\n".join(out_lines)
@@ -1567,6 +1657,16 @@ if GITHUB_PULL_ENABLED:
         else:
             st.caption("No GitHub activity found in the last 24h, or the pull failed.")
 
+# ── QUICK POLL / Q&A — Streamlit has no live multi-user voting, so this is
+# a lightweight "attach a question" feature: whatever's typed here gets
+# appended as a footer to the chat/WhatsApp outputs so the team sees it
+# and can reply in the same thread, rather than a real-time poll widget. ──
+quick_question = st.text_input(
+    "💬 Quick team question (optional) — gets appended to Chat & WhatsApp updates",
+    placeholder="e.g. Thumbs up if Friday's demo time still works for everyone?",
+    key="quick_poll_question"
+)
+
 _day_segments = split_multi_day_paste(raw_updates) if raw_updates.strip() else []
 if _day_segments:
     st.caption(f"📚 Looks like {len(_day_segments)} days' worth of updates pasted at once — pick one to generate now (paste the rest again later, or use ➡️ Load to swap in a different day).")
@@ -1641,6 +1741,40 @@ if members:
         )
     st.markdown(f'<div class="member-chips">{chips}</div>', unsafe_allow_html=True)
 
+    # ── TEAM PULSE — optional, self-reported, SESSION-ONLY (never written to
+    # disk, never shown per-person). Each tap is an anonymous data point that
+    # only ever surfaces as a team-level aggregate, in the same spirit as
+    # flag_brief_updates()'s "purely objective... NOT sentiment/emotion
+    # analysis" stance — this is a self-report, not an inference. ──
+    with st.expander("😊 Team Pulse — optional, anonymous team-level mood check", expanded=False):
+        st.caption("Tap how the team's feeling overall today. This is never stored per-person or saved to disk — it's just a same-run, anonymous snapshot.")
+        MOOD_OPTIONS = {"Skip": None, "😞 Rough": 1, "😐 Okay": 2, "🙂 Good": 3, "😄 Great": 4}
+        pulse_cols = st.columns(len(members)) if len(members) <= 6 else [st.container()] * len(members)
+        pulse_taps = []
+        for i, m in enumerate(members):
+            with pulse_cols[i]:
+                pick = st.select_slider(
+                    m["name"], options=list(MOOD_OPTIONS.keys()), value="Skip",
+                    key=f"pulse_{m['name'].lower()}", label_visibility="visible"
+                )
+                if MOOD_OPTIONS[pick] is not None:
+                    pulse_taps.append(MOOD_OPTIONS[pick])
+        if pulse_taps:
+            avg = sum(pulse_taps) / len(pulse_taps)
+            pulse_emoji = "😄" if avg >= 3.5 else "🙂" if avg >= 2.5 else "😐" if avg >= 1.5 else "😞"
+            pulse_word = "Great" if avg >= 3.5 else "Good" if avg >= 2.5 else "Okay" if avg >= 1.5 else "Rough"
+            tally = ", ".join(f"{pulse_taps.count(v)}× {k.split(' ')[0]}" for k, v in MOOD_OPTIONS.items() if v and v in pulse_taps)
+            st.markdown(
+                f'<div style="margin-top:0.5rem;background:rgba(16,185,129,0.06);'
+                f'border:1.5px solid rgba(16,185,129,0.2);border-radius:12px;padding:0.6rem 1rem;font-size:0.85rem;">'
+                f'{pulse_emoji} <strong>Team pulse today: {pulse_word}</strong> — based on {len(pulse_taps)} of {len(members)} response(s) ({tally})'
+                f'<div style="opacity:0.65;font-size:0.75rem;margin-top:0.2rem;">Aggregate only — no individual response is shown or saved.</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.caption("No responses yet — this stays blank unless someone taps a mood above.")
+
     # ── TEAM ROSTER — profile memory (role tag per member, remembered
     # across runs so it doesn't need re-entering every standup) ──
     with st.expander("👥 Team Roster — tag each member's role (remembered next time)", expanded=False):
@@ -1697,6 +1831,26 @@ if members:
                 f'border:1.5px solid rgba(59,130,246,0.2);border-radius:12px;'
                 f'padding:0.7rem 1rem;font-size:0.85rem;color:#1E3A8A;">'
                 f'📏 <strong>Notably briefer than usual (word count only):</strong>{brief_lines}</div>',
+                unsafe_allow_html=True
+            )
+
+        # ── BLOCKER ESCALATION — a blocker that has now shown up for the
+        # same person across 3+ consecutive saved entries (today + 2 prior)
+        # gets called out as needing escalation, since a blocker sitting
+        # untouched that long usually means it needs help above the team. ──
+        escalations = flag_recurring_blockers(members, st.session_state.history)
+        if escalations:
+            esc_lines = "".join(
+                f'<div style="margin-top:0.3rem;"><strong>{name}:</strong> "{text}" '
+                f'— seen {days} days running</div>'
+                for name, items in escalations.items()
+                for text, days in items
+            )
+            st.markdown(
+                f'<div style="margin-top:0.6rem;background:rgba(239,68,68,0.06);'
+                f'border:1.5px solid rgba(239,68,68,0.25);border-radius:12px;'
+                f'padding:0.7rem 1rem;font-size:0.85rem;color:#991B1B;">'
+                f'🚨 <strong>Needs escalation — blocker(s) unresolved for 3+ days:</strong>{esc_lines}</div>',
                 unsafe_allow_html=True
             )
 else:
@@ -1828,6 +1982,13 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             wa        = data.get("whatsapp_update", "")
             email_raw = data.get("email_update", "")
 
+            # Append the optional quick team question, if one was typed —
+            # a deterministic footer, not something the LLM was asked about.
+            _qq = st.session_state.get("quick_poll_question", "").strip()
+            if _qq:
+                chat = chat.rstrip() + f"\n\n💬 Quick question: {_qq}"
+                wa   = wa.rstrip() + f"\n\n💬 Quick question: {_qq}"
+
             lines      = email_raw.splitlines()
             subj_line  = next((l for l in lines if l.lower().startswith("subject:")), "")
             subj       = subj_line.replace("Subject:", "").replace("subject:", "").strip()
@@ -1902,7 +2063,32 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 unsafe_allow_html=True
             )
             st.text_area("Jira", jira_markup, height=dynamic_ta_height(jira_markup), key="edit_jira", label_visibility="collapsed")
+            render_copy_button(jira_markup, "jira")
             st.markdown("</div>", unsafe_allow_html=True)
+
+            # Teams & Discord — same deterministic-transform approach as the
+            # Jira/Confluence markup above, no extra API call needed
+            teams_markup = to_teams_markup(chat)
+            discord_markup = to_discord_markup(chat)
+            tcol1, tcol2 = st.columns(2)
+            with tcol1:
+                st.markdown(
+                    '<div class="colored-block tomorrow-block">'
+                    '<div class="block-title tomorrow-title"><span class="block-title-text"><span class="block-icon-badge">🟣</span>Teams Format</span></div>',
+                    unsafe_allow_html=True
+                )
+                st.text_area("Teams", teams_markup, height=dynamic_ta_height(teams_markup), key="edit_teams", label_visibility="collapsed")
+                render_copy_button(teams_markup, "teams")
+                st.markdown("</div>", unsafe_allow_html=True)
+            with tcol2:
+                st.markdown(
+                    '<div class="colored-block tomorrow-block">'
+                    '<div class="block-title tomorrow-title"><span class="block-title-text"><span class="block-icon-badge">🎮</span>Discord Format</span></div>',
+                    unsafe_allow_html=True
+                )
+                st.text_area("Discord", discord_markup, height=dynamic_ta_height(discord_markup), key="edit_discord", label_visibility="collapsed")
+                render_copy_button(discord_markup, "discord")
+                st.markdown("</div>", unsafe_allow_html=True)
 
             # Email — full width with mailto button
             st.markdown(
