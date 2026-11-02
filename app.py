@@ -1,5 +1,28 @@
 import streamlit as st
-import streamlit.components.v1 as components
+import streamlit.components.v1 as _components_v1
+
+
+class _ComponentsCompat:
+    """components.html is deprecated in recent Streamlit in favour of st.iframe.
+    Use st.iframe when available (same srcdoc/JS behaviour), else fall back."""
+
+    @staticmethod
+    def html(html, width=None, height=None, scrolling=False, **kw):
+        import streamlit as _st
+        if hasattr(_st, "iframe"):
+            try:
+                _w = width if isinstance(width, int) and width > 0 else "stretch"
+                _h = height if isinstance(height, int) else "content"
+                return _st.iframe(html, width=_w, height=_h)
+            except Exception:
+                pass
+        return _components_v1.html(html, width=width, height=height, scrolling=scrolling, **kw)
+
+    def __getattr__(self, name):
+        return getattr(_components_v1, name)
+
+
+components = _ComponentsCompat()
 import json
 import re
 import os
@@ -89,7 +112,7 @@ CSS = """
     --cta:#b5532f; --cta-2:#a24424;
     --shadow:0 1px 2px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.05);
     --sev2:#964307; --sev3:#b03a0a; --sev4:#b91c1c;
-    --del-fg:#a52f1e; --add-fg:#16662d; --ok:#248a3d; --warn:#b25e09; --bad:#d70015;
+    --del-fg:#a52f1e; --add-fg:#16662d; --ok:#248a3d; --warn:#8f4b00; --bad:#d70015;
     --glass:rgba(251,251,253,0.72);
     /* legacy aliases still referenced by inline styles / components */
     --card-bg:var(--card); --card-bdr:var(--hair); --text-h:var(--txt); --text-b:var(--txt); --text-m:var(--txt-2);
@@ -136,7 +159,7 @@ html, body, .stApp { font-family:var(--font) !important; }
 .stApp { background:var(--bg) !important; color:var(--txt); -webkit-font-smoothing:antialiased; }
 code, pre, pre * , .stCode * { font-family:var(--mono) !important; }
 .stApp [data-testid="stMarkdownContainer"] :is(p,li,h1,h2,h3,h4,strong,em) { color:var(--txt); }
-.stApp [data-testid="stCaptionContainer"], .stApp [data-testid="stCaptionContainer"] * { color:var(--txt-2) !important; font-size:var(--fs-1); line-height:1.5; }
+.stApp [data-testid="stCaptionContainer"], .stApp [data-testid="stCaptionContainer"] * { color:var(--txt-2) !important; font-size:var(--fs-1); line-height:1.5;  opacity:1 !important; }
 .stApp [data-testid="stMarkdownContainer"] p { line-height:1.55; }
 .main .block-container, [data-testid="stMainBlockContainer"], .block-container {
     max-width:1040px !important; margin:0 auto;
@@ -481,7 +504,7 @@ mark.diff-add, .diff-add { background:rgba(52,199,89,0.18); color:var(--add-fg);
 .hero-section > * { animation:fadeUp 0.8s var(--ease) both; }
 .hero-section > .eyebrow { animation-delay:0.02s; } .hero-section > .main-title { animation-delay:0.1s; }
 .hero-section > .main-subtitle { animation-delay:0.2s; } .hero-section > .sangha-meaning { animation-delay:0.3s; }
-[data-testid="stExpander"], [data-testid="stTextArea"] { animation:fadeUp 0.7s 0.35s var(--ease) both; }
+/* (stagger fade-in on every expander/textarea removed — perf) */
 @supports (animation-timeline: view()) {
     @keyframes revealIn { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
     .reveal { animation:revealIn linear both; animation-timeline:view(); animation-range:entry 0% entry 35%; }
@@ -710,6 +733,51 @@ body:not(:has(#dmchk:checked)) div[data-baseweb="popover"] { color-scheme:light;
 
 div[class*="st-key-sec_"] button, div[class*="st-key-sec_"] [data-testid="stBaseButton-secondary"] { width:auto !important; min-width:0 !important; }
 div[class*="st-key-sec_"] > div, div[class*="st-key-sec_"] .stButton { width:auto !important; }
+
+/* ═══ ROUND 5 — new components (all colours from tokens → correct in every OS × app theme combination) ═══ */
+.sr-only { position:absolute !important; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.hint-card { margin:var(--sp-2) 0; padding:var(--sp-2) var(--sp-3); border-radius:var(--r-md); background:var(--fill); border:1px solid var(--hair); color:var(--txt); font-size:0.9375rem; }
+.hint-card .hint-title { font-weight:600; display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; color:var(--txt); }
+.hint-card .glyph { font-weight:700; color:var(--accent); }
+.hint-card.warn { border-left:4px solid var(--warn); }
+.hint-card.warn .glyph { color:var(--warn); }
+.hint-card.ok { border-left:4px solid var(--ok); }
+.hint-card.ok .glyph { color:var(--ok); }
+.hint-card ul { margin:6px 0 0; padding-left:1.2rem; } .hint-card li, .hint-card .hint-body { color:var(--txt-2); margin:3px 0; }
+.hint-card .chk-h { margin-top:8px; font-weight:600; color:var(--txt); } .hint-card .chk-sub { font-weight:400; color:var(--txt-2); font-size:0.8125rem; }
+.numbers-strip { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 var(--sp-2); padding:10px var(--sp-2); border-radius:var(--r-md); background:var(--fill); }
+.numbers-strip .ns-label { font-size:0.75rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--txt-2); margin-right:4px; }
+.numbers-strip .ns-chip { padding:3px 12px; border-radius:999px; background:var(--card); border:1px solid var(--hair); font-size:0.875rem; color:var(--txt); }
+.numbers-strip .ns-chip b { color:var(--accent); font-weight:700; }
+.goal-card { margin:var(--sp-2) 0; padding:var(--sp-2) var(--sp-3); border-radius:var(--r-md); background:var(--fill); }
+.goal-card .goal-text { font-size:1.0625rem; font-weight:600; color:var(--txt); margin:2px 0 10px; }
+.goal-bar { height:10px; border-radius:99px; background:var(--card); border:1px solid var(--hair); overflow:hidden; }
+.goal-bar i { display:block; height:100%; background:var(--cta); border-radius:99px; }
+.goal-card .goal-meta { margin-top:8px; font-size:0.875rem; color:var(--txt-2); } .goal-card .goal-meta b { color:var(--txt); }
+.bk-table { width:100%; border-collapse:collapse; margin:8px 0; font-size:0.875rem; color:var(--txt); }
+.bk-table th, .bk-table td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--hair); color:var(--txt); } .bk-table th { color:var(--txt-2); font-weight:600; }
+.sev-tag { font-weight:700; margin-left:4px; }
+/* focus rings (keyboard) — visible on every interactive element */
+.stApp button:focus-visible, .stApp a:focus-visible, .stApp [role="tab"]:focus-visible, .stApp summary:focus-visible, .stApp [role="switch"]:focus-visible, .dm-label:focus-visible, .fs-btn:focus-visible { outline:3px solid var(--accent) !important; outline-offset:2px !important; border-radius:8px; }
+.stApp [data-testid="stCheckbox"] input:focus-visible + div, .stApp [data-testid="stRadio"] input:focus-visible + div { outline:3px solid var(--accent); outline-offset:2px; }
+/* keep new buttons compact (placed AFTER the global CTA rules) */
+div[class*="st-key-rev_"] button, div[class*="st-key-aud_"] button, div[class*="st-key-ver_"] button, div[class*="st-key-dl_"] button, div[class*="st-key-prefill_"] button, div[class*="st-key-week_"] button {
+    width:auto !important; min-width:0 !important; max-width:300px !important; min-height:40px !important; padding:0.5rem 1.1rem !important; font-size:0.875rem !important; }
+div[class*="st-key-rev_"], div[class*="st-key-aud_"], div[class*="st-key-ver_"], div[class*="st-key-dl_"], div[class*="st-key-prefill_"], div[class*="st-key-week_"] { width:auto !important; }
+.stApp div.stButton:not(:has(button[kind="primary"])) button, .stApp [data-testid="stDownloadButton"] button { max-width:min(100%,300px) !important; }
+.stApp .stButton > button:not([kind="primary"]) p, .stApp [data-testid="stDownloadButton"] button p { white-space:normal; line-height:1.25; }
+.stApp [data-testid="stElementContainer"]:has(#sangha-hc), .stApp div.element-container:has(#sangha-hc) { display:none; }
+body:has(#dmchk:checked) { --warn:#ffb74d; --ok:#6fdc94; --bad:#ff6b6b; }
+/* HIGH CONTRAST — manual toggle (marker element) and the OS "prefers-contrast: more" setting */
+body:has(#sangha-hc):not(:has(#dmchk:checked)) { --txt:#000; --txt-2:#1a1a1a; --txt-3:#262626; --hair:rgba(0,0,0,0.55); --hair-2:rgba(0,0,0,0.35); --accent:#7a2509; --cta:#8a2d0e; --cta-2:#74240a; --fill:#e6e6ea; --sev2:#6b2f00; --warn:#7a3d00; --ok:#0e5a24; }
+body:has(#sangha-hc):has(#dmchk:checked) { --txt:#fff; --txt-2:#f2f2f2; --txt-3:#e6e6e6; --hair:rgba(255,255,255,0.7); --hair-2:rgba(255,255,255,0.45); --accent:#ffbfa3; --cta:#c8511f; --fill:#38383a; --sev2:#ffd166; --warn:#ffb74d; --ok:#7ee2a0; }
+@media (prefers-contrast: more) {
+    body:not(:has(#dmchk:checked)) { --txt:#000; --txt-2:#1a1a1a; --txt-3:#262626; --hair:rgba(0,0,0,0.55); --accent:#7a2509; --cta:#8a2d0e; }
+    body:has(#dmchk:checked) { --txt:#fff; --txt-2:#f2f2f2; --txt-3:#e6e6e6; --hair:rgba(255,255,255,0.7); --accent:#ffbfa3; }
+}
+@media (forced-colors: active) { .stApp button:focus-visible, .stApp [role="tab"]:focus-visible { outline:3px solid Highlight !important; } }
+#sangha-toast { position:fixed; right:16px; bottom:16px; z-index:999999; max-width:min(92vw,360px); padding:12px 16px; border-radius:14px; background:var(--card); color:var(--txt); border:1px solid var(--hair); box-shadow:0 12px 32px rgba(0,0,0,0.3); font-size:0.9rem; line-height:1.5; display:none; }
+#sangha-toast kbd { padding:1px 6px; border-radius:6px; border:1px solid var(--hair); background:var(--fill); font:600 0.8rem var(--mono); color:var(--txt); }
 </style>
 """
 
@@ -780,68 +848,6 @@ def _plain_label(k: str) -> str:
     return parts[1] if len(parts) == 2 and not parts[0][:1].isalnum() else str(k)
 
 
-st.markdown(CSS, unsafe_allow_html=True)
-# Hidden state inputs (static markup so they survive team-name changes).
-st.markdown(
-    '<input type="checkbox" id="dmchk" aria-label="Toggle dark mode">'
-    '<input type="radio" name="fontsize" id="fsSmall">'
-    '<input type="radio" name="fontsize" id="fsNormal" checked>'
-    '<input type="radio" name="fontsize" id="fsLarge">',
-    unsafe_allow_html=True
-)
-st.markdown(
-    '<div class="topbar"><div class="topbar-in">'
-    '<div class="tb-brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" '
-    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10M2 10l10-6 10 6z"/></svg>'
-    'SanghaStatus</div>'
-    f'<div class="tb-team" title="Current team">{_html.escape(st.session_state.team_name or "default")}</div>'
-    '<div class="tb-spacer"></div>'
-    '<div class="fs-toggle"><label for="fsSmall" class="fs-btn" aria-label="Smaller text">A-</label>'
-    '<label for="fsNormal" class="fs-btn" aria-label="Normal text">A</label>'
-    '<label for="fsLarge" class="fs-btn" aria-label="Larger text">A+</label></div>'
-    '<label for="dmchk" class="dm-label" role="switch" aria-label="Dark mode switch" tabindex="0" '
-    'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();document.getElementById(\'dmchk\').click();}"></label>'
-    '</div></div>',
-    unsafe_allow_html=True
-)
-
-# ═══════════════════════════════════════════════════
-# HERO
-# ═══════════════════════════════════════════════════
-st.markdown(
-    '<div class="hero-section">'
-    '<div class="hero-glow"></div>'
-    '<div class="eyebrow">Team standups, simplified</div>'
-    '<div class="main-title">Sangha<span class="accent-grad">Status</span></div>'
-    '<div class="main-subtitle">Turn raw team notes into polished updates \u2014 narrative, chat, WhatsApp and email \u2014 in seconds.</div>'
-    '<div class="sangha-meaning">Sangha \u00b7 the Pali word for \u201ccommunity\u201d \u00b7 focusing on the team</div>'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-
-def _render_team_switch():
-    """Team switch/create row. Rendered inside Customize > Team normally, or at
-    top level when the current team is PIN-locked (so the person can always
-    switch away)."""
-    _tm_col1, _tm_col2 = st.columns([4, 1])
-    with _tm_col1:
-        # Seed the widget's own state ONCE; passing value= alongside key= (while state also moves) is what
-        # made inputs show their default concatenated repeatedly.
-        if "team_name_widget" not in st.session_state:
-            st.session_state["team_name_widget"] = st.session_state.team_name
-        _team_name_input = st.text_input(
-            "Team name", key="team_name_widget", placeholder="default",
-            help="Switch or create a team \u2014 each team keeps its own roster, history & glossary."
-        )
-    with _tm_col2:
-        st.write("")
-        if st.button("Switch", key="sec_switch_team_btn", use_container_width=True):
-            st.session_state.team_name = _team_name_input.strip() or "default"
-            _save_last_team(st.session_state.team_name)
-            st.rerun()
-
-
 TEAM_SLUG = _slugify_team(st.session_state.team_name)
 _TEAM_SUFFIX = "" if TEAM_SLUG == "default" else f"_{TEAM_SLUG}"
 
@@ -851,6 +857,11 @@ _TEAM_SUFFIX = "" if TEAM_SLUG == "default" else f"_{TEAM_SLUG}"
 import sqlite3
 
 MAX_HISTORY  = 10
+def _sev_tag(days: int) -> str:
+    return "\u2716 Critical" if days >= 4 else ("\u25b2 Urgent" if days == 3 else "\u25b2 Watch")
+
+
+_HEALTH_GLYPH = {"Healthy": "\u2713", "Okay": "\u25cf", "Strained": "\u25b2", "At risk": "\u2716"}   # status is never colour-only
 HISTORY_FILE = f".sanghastatus_history{_TEAM_SUFFIX}.json"   # legacy file — auto-migrated into the DB below, then unused
 DB_FILE      = f".sanghastatus{_TEAM_SUFFIX}.db"
 
@@ -931,6 +942,180 @@ def _kv_load_with_json_migration(table: str, team_slug: str, json_file: str, def
     return default
 
 
+
+# ═══════════════════════════════════════════════════
+# UI PREFS + UI-LANGUAGE (item 41). Persisted per team in the same SQLite DB (table
+# "ui_prefs", one JSON blob per team slug — same helper pattern as roster/presets).
+# T("key") returns the string in the chosen UI language and falls back to English.
+# Generated-OUTPUT language is a separate, pre-existing setting (pref_lang).
+# ═══════════════════════════════════════════════════
+_UI_PREF_KEYS = ("pref_ui_lang", "pref_contrast", "pref_template", "pref_brand_project")
+UI_LANG_OPTIONS = {"English": "en", "हिन्दी": "hi", "मराठी": "mr"}
+
+
+def _load_ui_prefs() -> dict:
+    try:
+        raw = _kv_get_raw("ui_prefs", TEAM_SLUG)
+        return json.loads(raw) if raw else {}
+    except Exception:
+        return {}
+
+
+def _save_ui_prefs() -> None:
+    try:
+        _kv_set_raw("ui_prefs", TEAM_SLUG, {k: st.session_state.get(k) for k in _UI_PREF_KEYS})
+    except Exception:
+        pass
+
+
+_UI_LOADED_FLAG = f"_ui_prefs_loaded_{TEAM_SLUG}"
+if not st.session_state.get(_UI_LOADED_FLAG):
+    _p = _load_ui_prefs()
+    for _k in _UI_PREF_KEYS:
+        if _k in _p and _p[_k] is not None:
+            st.session_state[_k] = _p[_k]
+    st.session_state[_UI_LOADED_FLAG] = True
+st.session_state.setdefault("pref_ui_lang", "English")
+st.session_state.setdefault("pref_contrast", False)
+st.session_state.setdefault("pref_template", "Standup")
+st.session_state.setdefault("pref_brand_project", "")
+
+_I18N = {
+    "en": {
+        "hero_eyebrow": "Team standups, simplified",
+        "hero_sub": "Turn raw team notes into polished updates — narrative, chat, WhatsApp and email — in seconds.",
+        "hero_meaning": "Sangha · the Pali word for “community” · focusing on the team",
+        "customize": "Customize — tone, language, team, presets & more",
+        "tab_style": "Style", "tab_team": "Team", "tab_presets": "Presets", "tab_glossary": "Glossary",
+        "tab_backup": "Backup", "tab_sprint": "Sprint", "tab_brand": "Brand",
+        "step1": "Step 1", "step1_title": "Paste your team’s updates",
+        "step1_sub": "Raw notes work fine — for engineering, functional or HR teams. Names are detected automatically.",
+        "step2": "Step 2", "step2_title": "Your team at a glance",
+        "members": "Members", "tasks": "Tasks", "blockers": "Blockers",
+        "standup_date": "Standup date", "tone": "Tone", "domain": "Domain", "out_lang": "Output language",
+        "project_tag": "Project / sprint tag", "incl_tomorrow": "Include tomorrow's plan", "hl_blockers": "Highlight blockers",
+        "template": "Template", "ui_lang": "Interface language", "high_contrast": "High contrast",
+        "generate": "Generate Professional Status", "prefill": "Prefill from yesterday",
+        "clear_output": "Clear output", "refine": "Refine this update",
+        "history": "History", "past_standups": "Past standups", "sprint_goal": "Sprint goal",
+        "whos_out": "Who’s out today?", "empty_title": "Paste your team’s updates to get started",
+        "shortcuts": "Keyboard shortcuts", "reset": "Reset preferences",
+    },
+    "hi": {
+        "hero_eyebrow": "टीम स्टैंडअप, आसान तरीके से",
+        "hero_sub": "टीम के कच्चे नोट्स को सेकंडों में साफ़-सुथरे अपडेट में बदलें — विवरण, चैट, WhatsApp और ईमेल।",
+        "hero_meaning": "संघ · पाली शब्द जिसका अर्थ “समुदाय” है · टीम पर ध्यान",
+        "customize": "अनुकूलित करें — टोन, भाषा, टीम, प्रीसेट और बहुत कुछ",
+        "tab_style": "शैली", "tab_team": "टीम", "tab_presets": "प्रीसेट", "tab_glossary": "शब्दकोश",
+        "tab_backup": "बैकअप", "tab_sprint": "स्प्रिंट", "tab_brand": "ब्रांड",
+        "step1": "चरण 1", "step1_title": "अपनी टीम के अपडेट पेस्ट करें",
+        "step1_sub": "कच्चे नोट्स भी चलेंगे — इंजीनियरिंग, फ़ंक्शनल या HR टीम के लिए। नाम अपने-आप पहचाने जाते हैं।",
+        "step2": "चरण 2", "step2_title": "आपकी टीम एक नज़र में",
+        "members": "सदस्य", "tasks": "कार्य", "blockers": "रुकावटें",
+        "standup_date": "स्टैंडअप की तारीख", "tone": "टोन", "domain": "क्षेत्र", "out_lang": "आउटपुट की भाषा",
+        "project_tag": "प्रोजेक्ट / स्प्रिंट टैग", "incl_tomorrow": "कल की योजना शामिल करें", "hl_blockers": "रुकावटें हाइलाइट करें",
+        "template": "टेम्पलेट", "ui_lang": "इंटरफ़ेस की भाषा", "high_contrast": "उच्च कंट्रास्ट",
+        "generate": "प्रोफ़ेशनल स्टेटस बनाएँ", "prefill": "कल से पहले से भरें",
+        "clear_output": "आउटपुट साफ़ करें", "refine": "इस अपडेट को सुधारें",
+        "history": "इतिहास", "past_standups": "पिछले स्टैंडअप", "sprint_goal": "स्प्रिंट लक्ष्य",
+        "whos_out": "आज कौन छुट्टी पर है?", "empty_title": "शुरू करने के लिए अपनी टीम के अपडेट पेस्ट करें",
+        "shortcuts": "कीबोर्ड शॉर्टकट", "reset": "प्राथमिकताएँ रीसेट करें",
+    },
+    "mr": {
+        "hero_eyebrow": "टीम स्टँडअप, सोप्या पद्धतीने",
+        "hero_sub": "टीमच्या कच्च्या नोट्सचे काही सेकंदांत नीटनेटक्या अपडेटमध्ये रूपांतर करा — वर्णन, चॅट, WhatsApp आणि ईमेल.",
+        "hero_meaning": "संघ · पाली शब्द ज्याचा अर्थ “समुदाय” · टीमवर लक्ष केंद्रित",
+        "customize": "सानुकूल करा — टोन, भाषा, टीम, प्रीसेट आणि बरेच काही",
+        "tab_style": "शैली", "tab_team": "टीम", "tab_presets": "प्रीसेट", "tab_glossary": "शब्दकोश",
+        "tab_backup": "बॅकअप", "tab_sprint": "स्प्रिंट", "tab_brand": "ब्रँड",
+        "step1": "पायरी 1", "step1_title": "तुमच्या टीमचे अपडेट पेस्ट करा",
+        "step1_sub": "कच्च्या नोट्सही चालतील — इंजिनिअरिंग, फंक्शनल किंवा HR टीमसाठी. नावे आपोआप ओळखली जातात.",
+        "step2": "पायरी 2", "step2_title": "तुमची टीम एका दृष्टिक्षेपात",
+        "members": "सदस्य", "tasks": "कामे", "blockers": "अडथळे",
+        "standup_date": "स्टँडअपची तारीख", "tone": "टोन", "domain": "क्षेत्र", "out_lang": "आउटपुटची भाषा",
+        "project_tag": "प्रोजेक्ट / स्प्रिंट टॅग", "incl_tomorrow": "उद्याची योजना समाविष्ट करा", "hl_blockers": "अडथळे हायलाइट करा",
+        "template": "टेम्पलेट", "ui_lang": "इंटरफेसची भाषा", "high_contrast": "उच्च कॉन्ट्रास्ट",
+        "generate": "प्रोफेशनल स्टेटस तयार करा", "prefill": "कालच्यावरून आधी भरा",
+        "clear_output": "आउटपुट काढा", "refine": "हे अपडेट सुधारा",
+        "history": "इतिहास", "past_standups": "मागील स्टँडअप", "sprint_goal": "स्प्रिंट उद्दिष्ट",
+        "whos_out": "आज कोण रजेवर आहे?", "empty_title": "सुरू करण्यासाठी तुमच्या टीमचे अपडेट पेस्ट करा",
+        "shortcuts": "कीबोर्ड शॉर्टकट", "reset": "प्राधान्ये रीसेट करा",
+    },
+}
+
+
+def T(key: str) -> str:
+    """UI string in the chosen interface language; falls back to English, then to the key."""
+    code = UI_LANG_OPTIONS.get(st.session_state.get("pref_ui_lang", "English"), "en")
+    return _I18N.get(code, {}).get(key) or _I18N["en"].get(key) or key
+
+
+# 43: strip comments + indentation from the CSS before sending (smaller payload, fewer style bytes to parse)
+_CSS_MIN = re.sub(r'\n\s+', '\n', re.sub(r'/\*.*?\*/', '', CSS, flags=re.S))
+st.markdown(_CSS_MIN, unsafe_allow_html=True)
+if st.session_state.get("pref_contrast"):
+    st.markdown('<span id="sangha-hc" hidden></span>', unsafe_allow_html=True)   # 40: high-contrast marker (CSS keys off it)
+# Hidden state inputs (static markup so they survive team-name changes).
+st.markdown(
+    '<input type="checkbox" id="dmchk" aria-label="Toggle dark mode">'
+    '<input type="radio" name="fontsize" id="fsSmall">'
+    '<input type="radio" name="fontsize" id="fsNormal" checked>'
+    '<input type="radio" name="fontsize" id="fsLarge">',
+    unsafe_allow_html=True
+)
+st.markdown(
+    '<div class="topbar"><div class="topbar-in">'
+    '<div class="tb-brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" '
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V10M10 21V10M14 21V10M19 21V10M2 10l10-6 10 6z"/></svg>'
+    'SanghaStatus</div>'
+    f'<div class="tb-team" title="Current team">{_html.escape(st.session_state.team_name or "default")}</div>'
+    '<div class="tb-spacer"></div>'
+    '<div class="fs-toggle"><label for="fsSmall" class="fs-btn" aria-label="Smaller text">A-</label>'
+    '<label for="fsNormal" class="fs-btn" aria-label="Normal text">A</label>'
+    '<label for="fsLarge" class="fs-btn" aria-label="Larger text">A+</label></div>'
+    '<label for="dmchk" class="dm-label" role="switch" aria-label="Dark mode switch" tabindex="0" '
+    'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();document.getElementById(\'dmchk\').click();}"></label>'
+    '</div></div>',
+    unsafe_allow_html=True
+)
+
+# ═══════════════════════════════════════════════════
+# HERO
+# ═══════════════════════════════════════════════════
+st.markdown(
+    '<div class="hero-section">'
+    '<div class="hero-glow"></div>'
+    f'<div class="eyebrow">{_html.escape(T("hero_eyebrow"))}</div>'
+    '<div class="main-title" role="heading" aria-level="1">Sangha<span class="accent-grad">Status</span></div>'
+    f'<div class="main-subtitle">{_html.escape(T("hero_sub"))}</div>'
+    f'<div class="sangha-meaning">{_html.escape(T("hero_meaning"))}</div>'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+def _render_team_switch():
+    """Team switch/create row. Rendered inside Customize > Team normally, or at
+    top level when the current team is PIN-locked (so the person can always
+    switch away)."""
+    _tm_col1, _tm_col2 = st.columns([4, 1])
+    with _tm_col1:
+        # Seed the widget's own state ONCE; passing value= alongside key= (while state also moves) is what
+        # made inputs show their default concatenated repeatedly.
+        if "team_name_widget" not in st.session_state:
+            st.session_state["team_name_widget"] = st.session_state.team_name
+        _team_name_input = st.text_input(
+            "Team name", key="team_name_widget", placeholder="default",
+            help="Switch or create a team \u2014 each team keeps its own roster, history & glossary."
+        )
+    with _tm_col2:
+        st.write("")
+        if st.button("Switch", key="sec_switch_team_btn", use_container_width=True):
+            st.session_state.team_name = _team_name_input.strip() or "default"
+            _save_last_team(st.session_state.team_name)
+            st.rerun()
+
+
 # ═══════════════════════════════════════════════════
 # PER-TEAM PIN — optional lightweight access gate. A team with no PIN ever
 # set (including "default", unless someone deliberately sets one) behaves
@@ -977,9 +1162,9 @@ if _team_pin_hash and not st.session_state.get(_PIN_OK_KEY):
 # Streamlit would drop their session_state (pref_*, glossary/preset inputs) and
 # break generation + persistence when it closes.
 # ═══════════════════════════════════════════════════
-_cz = st.expander("Customize \u2014 tone, language, team, presets & more", expanded=False)
+_cz = st.expander(T("customize"), expanded=False)
 with _cz:
-    _cz_tabs = st.tabs(["Style", "Team", "Presets", "Glossary", "Backup"])
+    _cz_tabs = st.tabs([T("tab_style"), T("tab_team"), T("tab_presets"), T("tab_glossary"), T("tab_backup"), T("tab_sprint"), T("tab_brand")])
 with _cz_tabs[1]:
     st.markdown('<div class="eyebrow">Team</div>', unsafe_allow_html=True)
     _render_team_switch()
@@ -1958,7 +2143,7 @@ def to_discord_markup(chat_update: str) -> str:
     return "\n".join(out_lines)
 
 
-def build_docx_export(data: dict, fmt_date: str, prepared_by: str = ""):
+def build_docx_export(data: dict, fmt_date: str, prepared_by: str = "", template: str = "Standup", blocker_meta=None, project: str = ""):
     """Builds a Word document from the generated status update. Returns
     (bytes, None) on success, or (None, error_message) if python-docx
     isn't installed in this environment."""
@@ -1968,22 +2153,34 @@ def build_docx_export(data: dict, fmt_date: str, prepared_by: str = ""):
     except ImportError:
         return None, "python-docx isn't installed — add 'python-docx' to requirements.txt to enable this."
 
+    tpl = TEMPLATES.get(template, TEMPLATES["Standup"])
     doc = Document()
-    doc.add_heading(f"Daily Status Update — {fmt_date}", level=1)
-    if prepared_by:
+    doc.add_heading(f"{tpl['title']} — {fmt_date}", level=1)
+    _sub = " · ".join(x for x in [project and f"Project: {project}", prepared_by and f"Prepared by {prepared_by}"] if x)
+    if _sub:
         p = doc.add_paragraph()
-        p.add_run(f"Prepared by {prepared_by}").italic = True
+        p.add_run(_sub).italic = True
 
-    doc.add_heading("Standup Narrative", level=2)
+    doc.add_heading(tpl["narr_title"], level=2)
     doc.add_paragraph(data.get("standup_narrative", ""))
 
     if data.get("tomorrow_plan"):
-        doc.add_heading("Tomorrow's Plan", level=2)
+        doc.add_heading(tpl["tomorrow_title"], level=2)
         doc.add_paragraph(data["tomorrow_plan"])
 
-    if data.get("blocker_summary"):
-        doc.add_heading("Blockers", level=2)
-        doc.add_paragraph(data["blocker_summary"])
+    if data.get("blocker_summary") or blocker_meta:
+        doc.add_heading(tpl["blockers_title"], level=2)
+        if data.get("blocker_summary"):
+            doc.add_paragraph(data["blocker_summary"])
+        if blocker_meta:
+            tbl = doc.add_table(rows=1, cols=4)
+            tbl.style = "Table Grid"
+            for i, h in enumerate(("Person", "Blocker", "Owner", "Needed by")):
+                tbl.rows[0].cells[i].text = h
+            for x in blocker_meta:
+                cells = tbl.add_row().cells
+                cells[0].text, cells[1].text = x.get("name", ""), x.get("blocker", "")
+                cells[2].text, cells[3].text = x.get("owner") or "—", x.get("needs_by_date") or x.get("needs_by") or "—"
 
     doc.add_heading("Chat Update", level=2)
     doc.add_paragraph(data.get("chat_update", ""))
@@ -1997,31 +2194,63 @@ def build_docx_export(data: dict, fmt_date: str, prepared_by: str = ""):
     return buf.read(), None
 
 
-def build_pdf_export(data: dict, fmt_date: str, prepared_by: str = ""):
+def build_pdf_export(data: dict, fmt_date: str, prepared_by: str = "", project: str = "", logo: bytes = None,
+                     template: str = "Standup", blocker_meta=None):
     """
-    Single-day PDF export of today's generated status (narrative + chat +
-    blockers), mirroring SatiCast's fpdf2-based PDF export. Returns
-    (bytes, None) on success, or (None, error_message) if fpdf2 isn't
-    installed — sangha_requirements.txt lists fpdf2, but a deployment that
-    hasn't picked up the updated requirements yet degrades gracefully to
-    this message rather than crashing, and the Word export above still
-    works as a substitute either way.
+    Single-day PDF export (fpdf2). Branded: optional team logo + project name in a header and a page-numbered
+    footer on EVERY page. Returns (bytes, None) on success, or (None, error_message) if fpdf2 isn't installed.
+    Latin-1 core fonts only: characters outside Latin-1 (emoji, Devanagari) are dropped rather than crashing.
     """
     try:
         from fpdf import FPDF
+        import io as _io
     except ImportError:
         return None, "fpdf2 isn't installed — add 'fpdf2' to sangha_requirements.txt to enable this (the .docx export above works meanwhile)."
 
     def _latin1(text: str) -> str:
-        # fpdf2's core fonts are Latin-1 only; swap in a plain-ASCII font
-        # would be more work than this app needs, so non-Latin-1 characters
-        # (emoji, Devanagari output, etc.) are dropped rather than crashing.
         return (text or "").encode("latin-1", "ignore").decode("latin-1")
 
-    pdf = FPDF()
+    tpl = TEMPLATES.get(template, TEMPLATES["Standup"])
+    brand = _latin1(project) or "SanghaStatus"
+    logo_wh = None
+    if logo:
+        try:
+            from PIL import Image
+            _im = Image.open(_io.BytesIO(logo))
+            logo_wh = _im.size
+        except Exception:
+            logo = None
+
+    class _BrandPDF(FPDF):
+        def header(self):
+            x = self.l_margin
+            if logo and logo_wh:
+                h = 12.0
+                w = min(42.0, h * logo_wh[0] / max(1, logo_wh[1]))
+                try:
+                    self.image(_io.BytesIO(logo), x=x, y=8, w=w, h=h if w < 42.0 else None)
+                    x += w + 4
+                except Exception:
+                    pass
+            self.set_xy(x, 9)
+            self.set_font("Helvetica", "B", 12)
+            self.cell(0, 6, brand, new_x="LMARGIN", new_y="NEXT")
+            self.set_x(x)
+            self.set_font("Helvetica", "", 9)
+            self.cell(0, 5, _latin1(f"{tpl['title']} - {fmt_date}"), new_x="LMARGIN", new_y="NEXT")
+            self.line(self.l_margin, 24, self.w - self.r_margin, 24)
+            self.set_y(28)
+
+        def footer(self):
+            self.set_y(-13)
+            self.set_font("Helvetica", "I", 8)
+            self.cell(0, 8, f"{brand}  |  Page {self.page_no()}/{{nb}}", align="C")
+
+    pdf = _BrandPDF()
+    pdf.alias_nb_pages()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 16)
-    pdf.multi_cell(0, 10, _latin1(f"Daily Status Update - {fmt_date}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, 10, _latin1(f"{tpl['title']} - {fmt_date}"), new_x="LMARGIN", new_y="NEXT")
     if prepared_by:
         pdf.set_font("Helvetica", "I", 10)
         pdf.multi_cell(0, 8, _latin1(f"Prepared by {prepared_by}"), new_x="LMARGIN", new_y="NEXT")
@@ -2036,42 +2265,85 @@ def build_pdf_export(data: dict, fmt_date: str, prepared_by: str = ""):
         pdf.multi_cell(0, 6, _latin1(body), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(3)
 
-    _section("Standup Narrative", data.get("standup_narrative", ""))
+    _section(tpl["narr_title"], data.get("standup_narrative", ""))
     _section("Chat Update", data.get("chat_update", ""))
-    _section("Blockers", data.get("blocker_summary", ""))
+    _section(tpl["blockers_title"], data.get("blocker_summary", ""))
+    if blocker_meta:
+        _section("Blocker owners", "\n".join(
+            f"- {x.get('name', '')}: {x.get('blocker', '')} | owner: {x.get('owner') or '-'} | needed by: {x.get('needs_by_date') or x.get('needs_by') or '-'}"
+            for x in blocker_meta))
 
     return bytes(pdf.output()), None
 
 
-def render_copy_button(text: str, unique_key: str, label: str = "Copy"):
-    """Small pill copy-to-clipboard button. The label flips to "Copied" with a
-    green confirmation. Copies the text as generated (not live edits made in the
-    paired text_area, since reaching into that DOM reliably across Streamlit
-    versions isn't worth the fragility). Rendered in an iframe, so it can't call
-    st.toast; the in-button confirmation is the feedback."""
+@st.cache_data(show_spinner=False, max_entries=8)
+def _cached_docx(data_json, fmt_date, prepared_by, template, meta_json="[]", project=""):
+    return build_docx_export(json.loads(data_json), fmt_date, prepared_by, template, json.loads(meta_json), project)
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def _cached_pdf(data_json, fmt_date, prepared_by, project, logo_bytes, template, meta_json):
+    return build_pdf_export(json.loads(data_json), fmt_date, prepared_by, project, logo_bytes or None, template, json.loads(meta_json))
+
+
+@st.cache_data(show_spinner=False, max_entries=16)
+def _cached_consistency(members_json, texts_json):
+    return consistency_check(json.loads(members_json), json.loads(texts_json))
+
+
+def render_copy_button(text: str, unique_key: str, label: str = "Copy", html: str = None):
+    """Small pill copy-to-clipboard button. The label flips to "Copied" with a green confirmation.
+    With `html`, writes BOTH text/html and text/plain via ClipboardItem (rich paste into Confluence/Notion)
+    and falls back to plain text where ClipboardItem or the permission is unavailable.
+    Copies the text as generated (not live edits made in the paired text_area). Colours follow the app's
+    active theme (read from the parent page's dark-mode switch) so contrast holds in every OS/app combination."""
+    uk = re.sub(r'\W', '_', unique_key)
     payload = json.dumps(text)
+    html_payload = json.dumps(html) if html else "null"
     components.html(f"""
     <div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,'Segoe UI',Roboto,sans-serif;">
-        <button id="copyBtn_{unique_key}" onclick="doCopy_{unique_key}()"
-            style="padding:7px 18px;border-radius:999px;border:0;background:rgba(201,100,66,0.14);
-            color:#c8603b;cursor:pointer;font-size:0.84rem;font-weight:500;
+        <button id="copyBtn_{uk}" type="button" aria-label="{_html.escape(label)}"
+            style="padding:7px 18px;border-radius:999px;border:0;cursor:pointer;font-size:0.84rem;font-weight:600;
             transition:transform 0.18s cubic-bezier(0.22,1,0.36,1), background 0.18s;"
-            onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='none'">{label}</button>
+            onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='none'">{_html.escape(label)}</button>
     </div>
     <script>
-        function doCopy_{unique_key}() {{
-            const btn = document.getElementById('copyBtn_{unique_key}');
-            navigator.clipboard.writeText({payload}).then(() => {{
-                btn.textContent = 'Copied';
-                btn.style.background = '#34c759';
-                btn.style.color = '#fff';
-                setTimeout(() => {{
-                    btn.textContent = '{label}';
-                    btn.style.background = 'rgba(201,100,66,0.14)';
-                    btn.style.color = '#c8603b';
-                }}, 1400);
-            }}).catch(() => {{ btn.textContent = 'Copy failed'; }});
+        const btn = document.getElementById('copyBtn_{uk}');
+        const LABEL = {json.dumps(label)};
+        let flash = false;
+        function isDark() {{
+            try {{ return !!window.parent.document.getElementById('dmchk').checked; }} catch (e) {{
+                return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); }}
         }}
+        function paint() {{
+            if (flash) return;
+            const d = isDark();
+            btn.style.background = d ? 'rgba(240,149,111,0.20)' : 'rgba(180,80,45,0.12)';
+            btn.style.color = d ? '#f7b394' : '#8f3416';
+        }}
+        paint(); setInterval(paint, 700);
+        function done(ok) {{
+            flash = true;
+            btn.textContent = ok ? 'Copied' : 'Copy failed';
+            btn.style.background = ok ? '#1f7a3a' : '#b91c1c'; btn.style.color = '#fff';
+            setTimeout(() => {{ flash = false; btn.textContent = LABEL; paint(); }}, 1400);
+        }}
+        function legacy(t) {{
+            try {{ const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+                  const ok = document.execCommand('copy'); document.body.removeChild(ta); return ok; }} catch (e) {{ return false; }}
+        }}
+        btn.addEventListener('click', async () => {{
+            const text = {payload}, html = {html_payload};
+            try {{
+                if (html && window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {{
+                    await navigator.clipboard.write([new ClipboardItem({{
+                        'text/html': new Blob([html], {{type: 'text/html'}}),
+                        'text/plain': new Blob([text], {{type: 'text/plain'}}) }})]);
+                    return done(true);
+                }}
+            }} catch (e) {{ /* fall through to plain text */ }}
+            try {{ await navigator.clipboard.writeText(text); return done(true); }} catch (e) {{ return done(legacy(text)); }}
+        }});
     </script>
     """, height=44)
 
@@ -2210,7 +2482,7 @@ STRICT RULES:
 """
 
 
-def build_narrative_prompt(tone, domain, lang, include_tomorrow, include_blockers, glossary_block=""):
+def build_narrative_prompt(tone, domain, lang, include_tomorrow, include_blockers, glossary_block="", template="Standup"):
     """Narrative-family output: the spoken standup, tomorrow's plan, blockers.
     Split out so it can run in parallel with the chat/email prompts below."""
     tomorrow_key = (
@@ -2240,10 +2512,10 @@ Return a JSON object with EXACTLY these keys:
 {{
   "standup_narrative": "Good morning, everyone.\\n\\nHere is the status update for [Date].\\n\\n[Name 1]: [narrative].\\n\\n[Name 2]: [narrative].\\n\\nThat concludes today's status update."{tomorrow_key}{blocker_key}
 }}
-"""
+""" + template_prompt_block(template, "narrative")
 
 
-def build_chat_prompt(tone, domain, lang, glossary_block=""):
+def build_chat_prompt(tone, domain, lang, glossary_block="", template="Standup"):
     """Chat-family output: Slack/Teams update + WhatsApp update.
     Runs in parallel with the narrative and email prompts."""
     return _shared_instructions(tone, domain, lang, glossary_block) + """
@@ -2256,10 +2528,10 @@ Return a JSON object with EXACTLY these keys:
   "chat_update": "Daily Project Status Update | [Date]\\n\\n• [Name 1]\\n- [Task 1 sentence].\\n- [Task 2 sentence].\\n\\n• [Name 2]\\n- [Task 1 sentence].",
   "whatsapp_update": "📋 *Daily Status Update | [Date]*\\n\\n*[Name 1]*\\n- [Task 1 sentence].\\n- [Task 2 sentence].\\n\\n*[Name 2]*\\n- [Task 1 sentence]."
 }
-"""
+""" + template_prompt_block(template, "chat")
 
 
-def build_email_prompt(tone, domain, lang, glossary_block=""):
+def build_email_prompt(tone, domain, lang, glossary_block="", template="Standup"):
     """Email-family output. Runs in parallel with the narrative and chat prompts."""
     return _shared_instructions(tone, domain, lang, glossary_block) + """
 Use hyphen "-" for bullets. Never asterisks.
@@ -2281,12 +2553,894 @@ Return a JSON object with EXACTLY this key:
 {
   "email_update": "Subject: Daily Project Status Update | [Date]\\n\\nDear Team,\\n\\nPlease find below the status update for [Date].\\n\\n[Name 1]\\n- [Fully rewritten task sentence, not a copy of the input].\\n\\n[Name 2]\\n- [Fully rewritten task sentence].\\n\\nKindly revert in case of any queries.\\n\\nRegards,\\nProject Team"
 }
-"""
+""" + template_prompt_block(template, "email")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ITERATION A HELPERS — writing quality. All pure/deterministic except the
+# two LLM wrappers (revise_output / audience_rewrite), which are only ever
+# called from their own buttons.
+# ═══════════════════════════════════════════════════════════════════
+from datetime import timedelta
+from difflib import SequenceMatcher as _SM
+
+# ── 35: sensitive-data scrubber ──
+_SENS_RULES = [
+    ("API-KEY",      re.compile(r'\b(?:sk|nvapi|pk|rk)-[A-Za-z0-9_\-]{16,}'), 0),
+    ("GITHUB-TOKEN", re.compile(r'\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'), 0),
+    ("AWS-KEY",      re.compile(r'\b(?:AKIA|ASIA)[0-9A-Z]{16}\b'), 0),
+    ("SLACK-TOKEN",  re.compile(r'\bxox[abprs]-[A-Za-z0-9-]{10,}'), 0),
+    ("JWT",          re.compile(r'\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'), 0),
+    ("PASSWORD",     re.compile(r'(?i)\b(?:password|passwd|pwd|passcode)\s*(?:is\b|[:=])\s*["\']?([^\s"\',;]{3,})'), 1),
+    ("SECRET",       re.compile(r'(?i)\b(?:secret|api[_ -]?key|token)\s*[:=]\s*["\']?([^\s"\',;]{6,})'), 1),
+    ("HEX-SECRET",   re.compile(r'\b[a-fA-F0-9]{32,}\b'), 0),
+    ("LONG-TOKEN",   re.compile(r'(?<![\w/+=-])(?=[A-Za-z0-9+/_-]*[A-Za-z])(?=[A-Za-z0-9+/_-]*\d)[A-Za-z0-9+/_-]{40,}={0,2}(?![\w])'), 0),
+    ("EMAIL",        re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'), 0),
+]
+_PHONE_RE = re.compile(r'(?<![\w.@/-])(\+?\d[\d\s().-]{7,17}\d)(?![\w@])')
+
+
+def _phone_ok(m: str) -> bool:
+    digits = re.sub(r'\D', '', m)
+    if not (10 <= len(digits) <= 13):
+        return False
+    return not re.fullmatch(r'\d{4}[-/]\d{2}[-/]\d{2}', m.strip())
+
+
+def mask_sensitive(text: str):
+    """Returns (masked_text, findings). findings = [{type, preview, count}]. Placeholders look
+    like [REDACTED-API-KEY]. Pure function — callers decide whether to use the masked copy."""
+    found = {}
+
+    def _note(kind, val):
+        d = found.setdefault(kind, {"type": kind, "preview": (val[:4] + "…") if len(val) > 4 else "…", "count": 0})
+        d["count"] += 1
+
+    out = text or ""
+    for kind, rx, grp in _SENS_RULES:
+        def _sub(m, kind=kind, grp=grp):
+            val = m.group(grp or 0)
+            _note(kind, val)
+            if grp:
+                whole = m.group(0)
+                i = whole.rfind(val)
+                return whole[:i] + f"[REDACTED-{kind}]" + whole[i + len(val):]
+            return f"[REDACTED-{kind}]"
+        out = rx.sub(_sub, out)
+
+    def _ph(m):
+        if _phone_ok(m.group(1)):
+            _note("PHONE", m.group(1))
+            return "[REDACTED-PHONE]"
+        return m.group(0)
+    out = _PHONE_RE.sub(_ph, out)
+    return out, list(found.values())
+
+
+# ── 24: metrics ("By the numbers") ──
+_MET_NOUNS = {
+    "ticket": "tickets", "issue": "tickets", "story": "tickets",
+    "bug": "bugs", "defect": "bugs",
+    "test": "tests",
+    "pr": "PRs", "pull request": "PRs",
+    "deploy": "deploys", "deployment": "deploys", "release": "releases",
+    "candidate": "candidates", "interview": "interviews", "invoice": "invoices",
+}
+_MET_NOUN_RX = r'(?:tickets?|issues?|stories|story|bugs?|defects?|tests?(?:\s+cases?)?|prs?|pull\s+requests?|deploy(?:s|ments?)?|releases?|candidates?|interviews?|invoices?)'
+_MET_VERB_RX = r'(?:closed|resolved|fixed|merged|passed|passing|deployed|completed|shipped|reviewed|screened|processed|released|done)'
+_MET_A = re.compile(r'\b' + _MET_VERB_RX + r'\s+(\d+)\s+(?:\w+\s+)?(' + _MET_NOUN_RX + r')\b', re.I)
+_MET_B = re.compile(r'\b(\d+)\s+(?:\w+\s+)?(' + _MET_NOUN_RX + r')(?:\s+(' + _MET_VERB_RX + r'))?\b', re.I)
+_MET_VERB_LABEL = {
+    ("tickets", "closed"): "tickets closed", ("tickets", "resolved"): "tickets closed", ("tickets", "done"): "tickets closed", ("tickets", "completed"): "tickets closed",
+    ("bugs", "fixed"): "bugs fixed", ("bugs", "resolved"): "bugs fixed", ("bugs", "closed"): "bugs fixed",
+    ("tests", "passed"): "tests passed", ("tests", "passing"): "tests passed",
+    ("PRs", "merged"): "PRs merged", ("PRs", "reviewed"): "PRs reviewed",
+    ("deploys", "deployed"): "deploys", ("deploys", "completed"): "deploys",
+    ("releases", "deployed"): "releases", ("releases", "released"): "releases", ("releases", "shipped"): "releases",
+}
+
+
+def _canon_noun(n: str) -> str:
+    n = re.sub(r'\s+', ' ', n.lower().strip())
+    if n.startswith("test"):
+        return "tests"
+    if n.startswith("deploy"):
+        return "deploys"
+    if n in ("prs", "pr"):
+        return "PRs"
+    if n.startswith("pull"):
+        return "PRs"
+    if n in ("stories", "story"):
+        return "tickets"
+    if n.endswith("ies"):
+        n = n[:-3] + "y"
+    elif n.endswith("s") and not n.endswith("ss"):
+        n = n[:-1]
+    return _MET_NOUNS.get(n, n)
+
+
+def extract_metrics(members: list) -> list:
+    """Deterministic: pulls '<number> <noun>' facts out of the raw notes. Returns [(label, total)],
+    e.g. [('tickets closed', 5), ('tests passed', 12)]. Never invents a number."""
+    totals = {}
+    for m in members:
+        for t in m.get("tasks", []):
+            spans = []
+            for rx, vi in ((_MET_A, None), (_MET_B, 3)):
+                for mt in rx.finditer(t):
+                    if any(mt.start() < e and s < mt.end() for s, e in spans):
+                        continue
+                    spans.append((mt.start(), mt.end()))
+                    n = int(mt.group(1))
+                    noun = _canon_noun(mt.group(2))
+                    verb = (mt.group(0).split()[0] if vi is None else (mt.group(3) or "")).lower()
+                    label = _MET_VERB_LABEL.get((noun, verb)) or (f"{noun} {verb}".strip() if verb else noun)
+                    totals[label] = totals.get(label, 0) + n
+    return sorted(totals.items(), key=lambda kv: -kv[1])
+
+
+# ── 25: relative dates → concrete dates ──
+_WD_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_WD_PAT = r'(?:mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)'
+_DATE_PHRASE_RE = re.compile(
+    r'\b(?P<pre>by|before|until|till|due|on|for)?\s*(?P<p>tomorrow|today|tonight|eod|eow|cob|end of (?:the )?(?:day|week)|next week|'
+    r'next ' + _WD_PAT + r'|' + _WD_PAT + r'|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b', re.I)
+
+
+def _wd_index(word: str):
+    w = word.lower()[:3]
+    for i, n in enumerate(_WD_NAMES):
+        if n.startswith(w):
+            return i
+    return None
+
+
+def resolve_date_phrase(phrase: str, base: date):
+    """Resolve 'tomorrow' / 'by Friday' / 'next week' / 'EOD' / '12/11' relative to `base` (the standup
+    date). A bare weekday resolves to its next occurrence (today if it IS that weekday); 'next <weekday>'
+    is that weekday in the following week; 'next week' is the coming Monday."""
+    p = (phrase or "").strip().lower()
+    if p in ("today", "tonight", "eod", "cob", "end of day", "end of the day"):
+        return base
+    if p == "tomorrow":
+        return base + timedelta(days=1)
+    if p in ("eow", "end of week", "end of the week"):
+        return base + timedelta(days=(4 - base.weekday()) % 7)
+    if p == "next week":
+        return base + timedelta(days=7 - base.weekday())
+    if p.startswith("next "):
+        wd = _wd_index(p[5:])
+        return base + timedelta(days=7 - base.weekday() + wd) if wd is not None else None
+    if re.fullmatch(_WD_PAT, p):
+        return base + timedelta(days=(_wd_index(p) - base.weekday()) % 7)
+    m = re.fullmatch(r'(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?', p)
+    if m:
+        a, b, y = int(m.group(1)), int(m.group(2)), m.group(3)
+        yr = base.year if not y else (int(y) + 2000 if len(y) == 2 else int(y))
+        for d_, mo in ((a, b), (b, a)):     # day-first, then month-first if that is invalid
+            try:
+                return date(yr, mo, d_)
+            except ValueError:
+                continue
+    return None
+
+
+def fmt_short_date(d: date) -> str:
+    return d.strftime("%a, %b %d")
+
+
+def find_date_phrases(text: str):
+    """[(phrase_as_written, phrase_to_resolve)] — bare weekdays / numeric dates need a preposition
+    (by/before/on/due…) so 'Friday standup' or '3/4 done' are not mistaken for deadlines."""
+    out = []
+    for mt in _DATE_PHRASE_RE.finditer(text or ""):
+        p, pre = mt.group("p"), mt.group("pre")
+        bare_ok = re.fullmatch(r'(?i)tomorrow|today|tonight|eod|eow|cob|end of (?:the )?(?:day|week)|next week|next ' + _WD_PAT, p)
+        if not pre and not bare_ok:
+            continue
+        out.append(((pre + " " if pre else "") + p, p))
+    return out
+
+
+def extract_dated_mentions(members: list, base: date) -> list:
+    res = []
+    for m in members:
+        for t in m.get("tasks", []):
+            for shown, p in find_date_phrases(t):
+                d = resolve_date_phrase(p, base)
+                if d:
+                    res.append({"name": m["name"], "text": t, "phrase": shown, "date": d.isoformat()})
+                    break
+    return res
+
+
+def resolve_action_dates(items: list, base: date) -> list:
+    out = []
+    for it in items:
+        d = resolve_date_phrase(it.get("when", ""), base)
+        out.append({**it, "date": d.isoformat() if d else ""})
+    return out
+
+
+# ── 22: consistency check (notes vs. generated output) ──
+_STOP = frozenset("a an the and or of to in on for with at by from is are was were be been being it its this that these those as but not no we i you he she they them our their his her will would can could should may might do does did done has have had into over under about after before again up out so if then than also just only more most very all any each per via".split())
+_BOILER_RE = re.compile(
+    r"^(good morning|dear team|regards|kindly revert|that concludes|please find|here is the|subject:|daily (project )?status|hi\b|hello|thanks|thank you|"
+    r"project team|blockers identified|no blockers|quick question|the following)", re.I)
+
+
+def _stem(w: str) -> str:
+    for suf in ("ing", "ed", "es", "s", "ly"):
+        if len(w) > len(suf) + 3 and w.endswith(suf):
+            return w[:-len(suf)]
+    return w
+
+
+def _stems(text: str) -> set:
+    return {_stem(w) for w in re.findall(r"[a-z0-9']+", (text or "").lower()) if len(w) > 2 and w not in _STOP}
+
+
+def _split_sentences(text: str) -> list:
+    parts = []
+    for line in (text or "").splitlines():
+        line = line.strip().lstrip("-•*").strip().strip("*_")
+        for s in re.split(r'(?<=[.!?])\s+', line):
+            s = s.strip()
+            if s:
+                parts.append(s)
+    return parts
+
+
+def consistency_check(members: list, output_texts: list) -> dict:
+    """Deterministic (no LLM): (1) tasks in the notes with no counterpart in the output, (2) output
+    sentences with no source in the notes. Fuzzy: SequenceMatcher ratio OR content-word overlap."""
+    sents = [s for t in output_texts for s in _split_sentences(t)]
+    out_stems = set().union(*[_stems(s) for s in sents]) if sents else set()
+    names = {m["name"].lower() for m in members}
+    name_stems = set().union(*[_stems(n) for n in names]) if names else set()
+    tasks = [(m["name"], t) for m in members for t in m.get("tasks", [])]
+    src_stems = set().union(*[_stems(t) for _, t in tasks]) if tasks else set()
+    missing = []
+    for nm, t in tasks:
+        cw = _stems(t) - name_stems
+        if not cw:
+            continue
+        recall = len(cw & out_stems) / len(cw)
+        best = max((_SM(None, t.lower(), s.lower()).ratio() for s in sents), default=0)
+        if recall < 0.5 and best < 0.5:
+            missing.append((nm, t))
+    unsupported, seen = [], set()
+    for s in sents:
+        if len(s.split()) < 4 or _BOILER_RE.match(s) or s.lower().rstrip(":") in names or s in seen:
+            continue
+        cw = _stems(s) - name_stems
+        if len(cw) < 2:
+            continue
+        prec = len(cw & src_stems) / len(cw)
+        best = max((_SM(None, s.lower(), t.lower()).ratio() for _, t in tasks), default=0)
+        if prec < 0.35 and best < 0.4:
+            unsupported.append(s)
+            seen.add(s)
+    return {"missing": missing, "unsupported": unsupported, "tasks": len(tasks), "sentences": len(sents)}
+
+
+# ── 37: input validation hints ──
+_HEADER_LINE_RE = re.compile(r'^[A-Z][^\n:]{0,30}:')
+
+
+def validate_input(raw: str, members: list, expect_blockers: bool = True) -> list:
+    """Returns a list of short hint strings (all deterministic)."""
+    hints = []
+    if not (raw or "").strip():
+        return hints
+    cur = None
+    cur_bullets = {}
+    header_order = []
+    for i, ln in enumerate(raw.splitlines(), 1):
+        st_ = ln.strip()
+        if not st_:
+            continue
+        if len(st_) > 300:
+            hints.append(f"Line {i} is very long ({len(st_)} characters) — consider splitting it into bullets.")
+        if st_[0] in "-•*":
+            if cur is None:
+                hints.append(f"Line {i} is a bullet but sits above any “Name:” header, so no member owns it.")
+            else:
+                cur_bullets[cur] = cur_bullets.get(cur, 0) + 1
+        elif _HEADER_LINE_RE.match(st_):
+            cur = st_.split(":")[0].strip()
+            header_order.append(cur)
+            cur_bullets.setdefault(cur, 0)
+        else:
+            if cur is None:
+                hints.append(f"Line {i} (“{st_[:40]}”) isn't under a member — no “Name:” header was detected before it.")
+            else:
+                hints.append(f"Line {i} under {cur} isn't a bullet (start it with “- ”) and will be ignored.")
+    for nm in header_order:
+        if cur_bullets.get(nm, 0) == 0:
+            hints.append(f"{nm} has no tasks listed — add at least one “- ” bullet or remove the header.")
+    by_lower = {}
+    for nm in header_order:
+        by_lower.setdefault(nm.lower(), set()).add(nm)
+    for variants in by_lower.values():
+        if len(variants) > 1:
+            hints.append("Duplicate names with different case: " + ", ".join(sorted(variants)) + " — they are treated as separate members.")
+    if members and expect_blockers and not any(m.get("blockers") for m in members):
+        hints.append("No blockers detected — if someone is stuck, phrase it with words like “blocked on”, “waiting for” or “need approval” so it is highlighted.")
+    seen, out = set(), []
+    for h in hints:
+        if h not in seen:
+            seen.add(h)
+            out.append(h)
+    return out[:8]
+
+
+# ── 21 / 23: LLM wrappers (always behind their own buttons) ──
+REVISE_OPTIONS = {
+    "shorter":  ("Shorter",      "Make every field roughly 35-40% shorter. Keep every person, every task and every blocker; remove filler words and repetition only."),
+    "formal":   ("More formal",  "Raise the register: formal, precise, professional wording. No slang, no contractions, no exclamation marks. Keep all facts."),
+    "numbers":  ("Add numbers",  "Surface quantities. Where the text already states or clearly implies a count, percentage, duration or date, state it explicitly and prominently. NEVER invent a figure that is not in the input."),
+    "friendly": ("Friendlier",   "Make the tone warm, upbeat and approachable while staying professional. Light touches only; keep all facts and structure."),
+}
+
+
+def revise_output(fields: dict, key: str, mask: bool = False):
+    """Revise the CURRENT output (not the raw notes). Returns (new_fields, tokens, err)."""
+    label, instr = REVISE_OPTIONS[key]
+    payload = {k: v for k, v in fields.items() if isinstance(v, str) and v.strip()}
+    if mask:
+        payload = {k: mask_sensitive(v)[0] for k, v in payload.items()}
+    sysmsg = (
+        f"MODE: REVISE {label}\n"
+        "You are SanghaStatus' editor. You receive a JSON object of already-written team status texts and an instruction. "
+        "Rewrite EACH value according to the instruction. Keep the SAME JSON keys, the same language, the same people, "
+        "the same line-break/bullet structure, headers, sign-offs and any footer lines. Do not add or drop people or tasks. "
+        "Return ONLY the JSON object. No markdown fences, no reasoning, no <think> tags."
+    )
+    user = "CURRENT_OUTPUT_JSON:" + json.dumps(payload, ensure_ascii=False) + "\nINSTRUCTION: " + instr
+    try:
+        data, completion = call_llm_json(sysmsg, user, 0.2, min(3500, 900 + sum(len(v) for v in payload.values()) // 2))
+    except Exception as e:
+        return None, 0, str(e)[:200]
+    out = {k: (data[k].strip() if isinstance(data.get(k), str) and data[k].strip() else fields[k]) for k in payload}
+    if all(out[k] == payload[k] for k in out):
+        return None, 0, "The model returned the text unchanged — try again."
+    toks = completion.usage.total_tokens if getattr(completion, "usage", None) else 0
+    return out, toks, ""
+
+
+AUDIENCE_OPTIONS = {
+    "manager": ("For my manager", "Write for a MANAGER: lead with outcomes and risks in 3-5 crisp lines, then who needs what from them. Mention blockers with owner and impact. No code-level detail."),
+    "client":  ("For the client", "Write for an EXTERNAL CLIENT: positive, factual, progress-focused. OMIT internal blockers, internal tooling or environment problems, staffing issues, @mentions and any person's internal difficulties. If something is delayed, phrase it neutrally as an adjusted timeline without naming internal causes."),
+    "team":    ("For the team", "Write for the TEAM: friendly, concrete, first-person-plural ('we'), include who is blocked and what help is needed, and what is next."),
+}
+
+
+def audience_rewrite(kind: str, narrative: str, blocker_texts: list, mask: bool = False):
+    """One LLM call → audience-specific text. Returns (text, tokens, err)."""
+    label, instr = AUDIENCE_OPTIONS[kind]
+    src = mask_sensitive(narrative)[0] if mask else narrative
+    sysmsg = (
+        f"MODE: AUDIENCE {label}\n"
+        "You rewrite a finished team status update for a specific audience. Use ONLY facts present in the input; never invent work. "
+        f"{instr}\nReturn ONLY a JSON object {{\"text\": \"...\"}}. No markdown fences, no reasoning, no <think> tags."
+    )
+    try:
+        data, completion = call_llm_json(sysmsg, "STATUS_UPDATE:\n" + src, 0.2, 1400)
+    except Exception as e:
+        return "", 0, str(e)[:200]
+    text = str(data.get("text", "")).strip()
+    if not text:
+        return "", 0, "Empty response — try again."
+    if kind == "client":
+        text = scrub_for_client(text, blocker_texts)
+    toks = completion.usage.total_tokens if getattr(completion, "usage", None) else 0
+    return text, toks, ""
+
+
+def scrub_for_client(text: str, blocker_texts: list) -> str:
+    """Deterministic safety net on top of the prompt: drop @mentions and any sentence that repeats an
+    internal blocker from the notes."""
+    text = re.sub(r'@[A-Za-z][\w]{1,30}', '', text)
+    kept = []
+    for line in text.splitlines():
+        ok = []
+        for s in re.split(r'(?<=[.!?])\s+', line):
+            low = s.lower()
+            hit = any(
+                b and (_SM(None, low, b.lower()).ratio() > 0.55 or (len(_stems(b)) >= 3 and len(_stems(s) & _stems(b)) / len(_stems(b)) >= 0.6))
+                for b in blocker_texts
+            ) or bool(re.search(r'\b(blocked|blocker|waiting (?:on|for)|stuck)\b', low))
+            if not hit:
+                ok.append(s)
+        kept.append(" ".join(ok).replace("  ", " ").strip())
+    return re.sub(r'\n{3,}', '\n\n', "\n".join(kept)).strip()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ITERATION B HELPERS — team workflow & output.
+# ═══════════════════════════════════════════════════════════════════
+import copy as _copy
+import io as _io
+import base64 as _b64
+
+# ── 30: templates beyond standup. JSON keys stay the same so every renderer/export keeps working;
+# only the prompt instructions and the display labels change. "Standup" adds NOTHING to the prompts
+# (byte-for-byte the previous behaviour). ──
+TEMPLATES = {
+    "Standup":         {"title": "Daily Status Update",  "narr_title": "Standup Narrative", "tab_narrative": "Narrative",
+                        "tab_tomorrow": "Tomorrow", "tab_blockers": "Blockers", "tomorrow_title": "Tomorrow's Plan", "blockers_title": "Blockers"},
+    "Release notes":   {"title": "Release Notes",        "narr_title": "Release Notes",     "tab_narrative": "Release notes",
+                        "tab_tomorrow": "Next release", "tab_blockers": "Known issues", "tomorrow_title": "Next Release", "blockers_title": "Known Issues"},
+    "Incident update": {"title": "Incident Update",      "narr_title": "Incident Summary",  "tab_narrative": "Incident summary",
+                        "tab_tomorrow": "Next actions", "tab_blockers": "Open risks", "tomorrow_title": "Next Actions", "blockers_title": "Open Risks"},
+    "Weekly status":   {"title": "Weekly Status Report", "narr_title": "Weekly Summary",    "tab_narrative": "Weekly summary",
+                        "tab_tomorrow": "Next week", "tab_blockers": "Risks & blockers", "tomorrow_title": "Plan for Next Week", "blockers_title": "Risks & Blockers"},
+}
+_TEMPLATE_GUIDE = {
+    "Release notes": (
+        "RELEASE NOTES",
+        "Group the raw items under short headings that apply — \"New\", \"Improved\", \"Fixed\" — as bullets in user-facing language. "
+        "Credit the person in brackets after each bullet, e.g. \"(Alice)\". No greeting and no 'status update' framing. "
+        "tomorrow_plan (if requested) = what is planned for the NEXT release; blocker_summary (if requested) = KNOWN ISSUES."),
+    "Incident update": (
+        "INCIDENT UPDATE",
+        "Structure it as: Impact, Current status, Actions taken (who did what), Next steps and next update time (only if the notes give one). "
+        "Calm, factual, timestamped wording when the notes include times. tomorrow_plan (if requested) = NEXT ACTIONS; "
+        "blocker_summary (if requested) = OPEN RISKS / what is still unresolved."),
+    "Weekly status": (
+        "WEEKLY STATUS REPORT",
+        "Write it as a weekly report: Highlights, Progress by person, Risks, Next week. Summarise themes instead of repeating every sentence verbatim, "
+        "but still mention every person. tomorrow_plan (if requested) = PLAN FOR NEXT WEEK; blocker_summary (if requested) = RISKS & BLOCKERS."),
+}
+
+
+def template_prompt_block(template: str, kind: str) -> str:
+    """'' for Standup (unchanged prompts). For other templates, an override block appended to the prompt."""
+    if template not in _TEMPLATE_GUIDE:
+        return ""
+    name, guide = _TEMPLATE_GUIDE[template]
+    t = TEMPLATES[template]
+    head = {"narrative": "standup_narrative", "chat": "chat_update / whatsapp_update", "email": "email_update"}[kind]
+    return (
+        f"\nTEMPLATE OVERRIDE — {name}: this is NOT a daily standup. Keep the JSON keys EXACTLY as specified above, "
+        f"but write the value of {head} as a {t['title'].lower()}. {guide} "
+        f"Replace phrases like 'Daily Status Update' / 'status update' in headers and subject lines with '{t['title']}'. "
+        "Still use ONLY facts from the raw input, rewrite every item as a full sentence, and keep each person's items attributed.\n"
+    )
+
+
+# ── 27: blocker owner + needs-by ──
+def _bk_key(name: str, text: str) -> str:
+    return hashlib.md5(f"{name}|{text}".encode()).hexdigest()[:8]
+
+
+def _resolve_due(text: str, base: date):
+    text = (text or "").strip()
+    if not text:
+        return ""
+    d = resolve_date_phrase(text.lower().replace("by ", "").strip(), base)
+    if d is None:
+        try:
+            d = datetime.fromisoformat(text).date()
+        except Exception:
+            d = None
+    return d.isoformat() if d else ""
+
+
+def _collect_blocker_meta(members: list, base: date) -> list:
+    out = []
+    for m in members:
+        for b in m.get("blockers", []):
+            k = _bk_key(m["name"], b)
+            owner = str(st.session_state.get(f"bk_owner_{k}", "") or "").strip()
+            due = str(st.session_state.get(f"bk_due_{k}", "") or "").strip()
+            if owner or due:
+                out.append({"name": m["name"], "blocker": b, "owner": owner, "needs_by": due, "needs_by_date": _resolve_due(due, base)})
+    return out
+
+
+def blocker_meta_prompt(meta: list) -> str:
+    if not meta:
+        return ""
+    lines = "\n".join(
+        f"- {x['name']}: \"{x['blocker']}\" -> owner: {x['owner'] or 'unassigned'}; needed by: {x['needs_by_date'] or x['needs_by'] or 'not set'}"
+        for x in meta)
+    return ("\nBlocker owners and needed-by dates (state the owner and the needed-by date in the blocker details for these, "
+            "verbatim, and in the person's bullet where natural):\n" + lines + "\n")
+
+
+# ── 26: yesterday -> today prefill ──
+_DONE_RE = re.compile(r'\b(done|completed?|finished|deployed|fixed|merged|resolved|shipped|released|delivered|closed|signed off|wrapped up|submitted)\b', re.I)
+
+
+def build_prefill_text(history: list) -> str:
+    """Yesterday's still-open tasks + unresolved blockers per member. Follow-through logic: a task counts as
+    open unless it is phrased as completed; blockers and 'will … by …' action items always carry over."""
+    if not history:
+        return ""
+    blocks = []
+    for m in history[0].get("members_detail", []):
+        keep = [t for t in m.get("tasks", [])
+                if t in m.get("blockers", []) or ACTION_ITEM_RE.search(t) or not _DONE_RE.search(t)]
+        if keep:
+            blocks.append(f"{m['name']}:\n" + "\n".join(f"- {t}" for t in keep))
+    return "\n\n".join(blocks)
+
+
+# ── 29: sprint goal tracker (SQLite, keyed by TEAM_SLUG) ──
+def load_sprint_goal() -> str:
+    try:
+        raw = _kv_get_raw("sprint_goal", TEAM_SLUG)
+        return json.loads(raw).get("goal", "") if raw else ""
+    except Exception:
+        return ""
+
+
+def save_sprint_goal(goal: str) -> None:
+    try:
+        _kv_set_raw("sprint_goal", TEAM_SLUG, {"goal": goal})
+    except Exception:
+        pass
+
+
+def map_tasks_to_goal(goal: str, members: list) -> dict:
+    kw = _stems(goal)
+    linked, unlinked = [], []
+    for m in members:
+        for t in m.get("tasks", []):
+            (linked if (kw & _stems(t)) else unlinked).append((m["name"], t))
+    total = len(linked) + len(unlinked)
+    return {"linked": linked, "unlinked": unlinked, "pct": round(100 * len(linked) / total) if total else 0, "keywords": sorted(kw)}
+
+
+# ── 32: team logo (SQLite blob per team) ──
+def _logo_conn():
+    conn = _get_db_conn()
+    conn.execute("CREATE TABLE IF NOT EXISTS team_logo (team_slug TEXT PRIMARY KEY, mime TEXT, data BLOB)")
+    return conn
+
+
+def load_logo():
+    try:
+        conn = _logo_conn()
+        row = conn.execute("SELECT mime, data FROM team_logo WHERE team_slug=?", (TEAM_SLUG,)).fetchone()
+        conn.close()
+        return (row[0], bytes(row[1])) if row else None
+    except Exception:
+        return None
+
+
+def save_logo(mime: str, data: bytes) -> None:
+    try:
+        conn = _logo_conn()
+        conn.execute("INSERT INTO team_logo (team_slug, mime, data) VALUES (?,?,?) ON CONFLICT(team_slug) DO UPDATE SET mime=excluded.mime, data=excluded.data",
+                     (TEAM_SLUG, mime, data))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def delete_logo() -> None:
+    try:
+        conn = _logo_conn()
+        conn.execute("DELETE FROM team_logo WHERE team_slug=?", (TEAM_SLUG,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def validate_logo(name: str, data: bytes):
+    """png/jpg <= 1 MB that Pillow can actually open. Returns (mime, err)."""
+    if len(data) > 1_000_000:
+        return None, "Logo must be 1 MB or smaller."
+    try:
+        from PIL import Image
+        im = Image.open(_io.BytesIO(data))
+        fmt = (im.format or "").upper()
+        im.verify()
+    except Exception:
+        return None, "That file isn't a readable PNG/JPG image."
+    if fmt not in ("PNG", "JPEG"):
+        return None, "Only PNG or JPG logos are supported."
+    return ("image/png" if fmt == "PNG" else "image/jpeg"), ""
+
+
+# ── 36: output versions ──
+def _make_version_snapshot(res: dict, label: str) -> dict:
+    n = res.get("_vn", 0) + 1
+    res["_vn"] = n
+    return {"n": n, "label": label, "ts": datetime.now().strftime("%H:%M:%S"), "data": _copy.deepcopy(res["data"]),
+            "narrative": res["narrative"], "chat": res["chat"], "wa": res["wa"], "email_raw": res["email_raw"]}
+
+
+def _apply_snapshot(res: dict, snap: dict) -> None:
+    res["data"] = _copy.deepcopy(snap["data"])
+    for k in ("narrative", "chat", "wa", "email_raw"):
+        res[k] = snap[k]
+    res["refresh_edits"] = True
+
+
+def _persist_output_to_history(res: dict) -> None:
+    h = st.session_state.history
+    if h and res.get("saved_at") and h[0].get("saved_at") == res["saved_at"]:
+        h[0]["data"] = _copy.deepcopy(res["data"])
+        save_history_to_disk(h)
+
+
+# ── 31: markdown + HTML export, 33: Confluence/Notion clipboard ──
+def current_texts(res: dict) -> dict:
+    """Current (possibly hand-edited) texts of the stored output."""
+    g = st.session_state.get
+    d = res["data"]
+    return {
+        "narrative": g("edit_narrative", res["narrative"]), "chat": g("edit_chat", res["chat"]),
+        "wa": g("edit_whatsapp", res["wa"]), "email": g("edit_email", res["email_raw"]),
+        "tomorrow": d.get("tomorrow_plan", "") if res.get("include_tomorrow") else "",
+        "blockers": d.get("blocker_summary", "") if res.get("include_blockers") else "",
+    }
+
+
+def _meta_rows(res: dict):
+    return [(x["name"], x["blocker"], x.get("owner") or "—", x.get("needs_by_date") or x.get("needs_by") or "—")
+            for x in (res.get("blocker_meta") or [])]
+
+
+def build_markdown_export(res: dict) -> str:
+    t = current_texts(res)
+    tpl = TEMPLATES.get(res.get("template", "Standup"), TEMPLATES["Standup"])
+    out = [f"# {tpl['title']} — {res['fmt_date']}"]
+    sub = " · ".join(x for x in [f"Project: {res['project']}" if res.get("project") else "", f"Prepared by {res['prepared_by']}" if res.get("prepared_by") else ""] if x)
+    if sub:
+        out.append(f"_{sub}_")
+    if res.get("metrics"):
+        out.append("**By the numbers:** " + " · ".join(f"{n} {l}" for l, n in res["metrics"]))
+    out += [f"\n## {tpl['narr_title']}\n", t["narrative"]]
+    if t["tomorrow"]:
+        out += [f"\n## {tpl['tomorrow_title']}\n", t["tomorrow"]]
+    if t["blockers"] or res.get("blocker_meta"):
+        out += [f"\n## {tpl['blockers_title']}\n", t["blockers"]]
+        rows = _meta_rows(res)
+        if rows:
+            out += ["", "| Person | Blocker | Owner | Needed by |", "|---|---|---|---|"] + [f"| {a} | {b} | {c} | {d} |" for a, b, c, d in rows]
+    out += ["\n## Chat Update\n", t["chat"], "\n## Email Update\n", t["email"]]
+    return "\n".join(out).strip() + "\n"
+
+
+def simple_md_to_html(md: str) -> str:
+    """Tiny markdown subset (headings, bullets, tables, bold/italic, paragraphs) -> HTML fragment. Used for the
+    HTML export and the formatted clipboard copy (Confluence/Notion accept pasted rich text)."""
+    def inline(s):
+        s = _html.escape(s)
+        s = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
+        s = re.sub(r'(?<![\w*])_(.+?)_(?![\w*])', r'<em>\1</em>', s)
+        return s
+    out, in_ul, in_tbl = [], False, False
+    for ln in md.splitlines():
+        st_ = ln.rstrip()
+        is_li = bool(re.match(r'\s*[-•*]\s+', st_))
+        if in_ul and not is_li:
+            out.append("</ul>"); in_ul = False
+        if in_tbl and not st_.startswith("|"):
+            out.append("</table>"); in_tbl = False
+        if not st_.strip():
+            continue
+        m = re.match(r'(#{1,3})\s+(.*)', st_)
+        if m:
+            lv = len(m.group(1)); out.append(f"<h{lv}>{inline(m.group(2))}</h{lv}>")
+        elif st_.startswith("|"):
+            if re.fullmatch(r'\|[\s|:-]+\|', st_):
+                continue
+            cells = [c.strip() for c in st_.strip("|").split("|")]
+            if not in_tbl:
+                out.append('<table border="1" cellpadding="6" style="border-collapse:collapse">'); in_tbl = True
+                out.append("<tr>" + "".join(f"<th>{inline(c)}</th>" for c in cells) + "</tr>")
+            else:
+                out.append("<tr>" + "".join(f"<td>{inline(c)}</td>" for c in cells) + "</tr>")
+        elif is_li:
+            if not in_ul:
+                out.append("<ul>"); in_ul = True
+            _li = re.sub(r'^\s*[-\u2022*]\s+', '', st_)
+            out.append("<li>" + inline(_li) + "</li>")
+        else:
+            out.append(f"<p>{inline(st_)}</p>")
+    if in_ul:
+        out.append("</ul>")
+    if in_tbl:
+        out.append("</table>")
+    return "\n".join(out)
+
+
+def build_html_export(res: dict) -> str:
+    tpl = TEMPLATES.get(res.get("template", "Standup"), TEMPLATES["Standup"])
+    body = simple_md_to_html(build_markdown_export(res))
+    css = ("body{font:16px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1d1d1f;background:#fff}"
+           "h1{font-size:1.7rem;border-bottom:2px solid #b5532f;padding-bottom:.4rem}h2{font-size:1.2rem;margin-top:2rem;color:#8f3416}"
+           "p{margin:.4rem 0;white-space:pre-wrap}ul{padding-left:1.2rem}table{margin:.6rem 0;font-size:.9rem}th{background:#f2f2f4;text-align:left}"
+           "@media (prefers-color-scheme:dark){body{background:#111;color:#f5f5f7}h2{color:#f0956f}th{background:#2c2c2e}}")
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>{_html.escape(tpl["title"])} — {_html.escape(res["fmt_date"])}</title><style>{css}</style></head><body>{body}</body></html>')
+
+
+# ── 28: weekly summary (deterministic stats + optional LLM paragraph) ──
+def _entry_date(e: dict):
+    try:
+        return datetime.strptime(e.get("date", ""), "%B %d, %Y").date()
+    except Exception:
+        try:
+            return datetime.fromisoformat(e.get("saved_at", "")).date()
+        except Exception:
+            return None
+
+
+@st.cache_data(show_spinner=False, max_entries=16)
+def week_stats(history_json: str, today_iso: str, goal: str = "") -> dict:
+    history = json.loads(history_json)
+    today = date.fromisoformat(today_iso)
+    cutoff = today - timedelta(days=6)
+    ents = [(e, _entry_date(e)) for e in history]
+    ents = [(e, d) for e, d in ents if d and cutoff <= d <= today]
+    per_member, blockers, health = {}, {}, []
+    tasks = nb = 0
+    for e, _d in ents:
+        md = e.get("members_detail", [])
+        tasks += sum(len(m.get("tasks", [])) for m in md)
+        for m in md:
+            per_member[m["name"]] = per_member.get(m["name"], 0) + len(m.get("tasks", []))
+            for b in m.get("blockers", []):
+                nb += 1
+                blockers[(m["name"], b)] = blockers.get((m["name"], b), 0) + 1
+        health.append(compute_health_score(md, {}, {})[0])
+    top = sorted(blockers.items(), key=lambda kv: -kv[1])[:5]
+    goal_pct = None
+    if goal and ents:
+        latest = max(ents, key=lambda x: x[1])[0]
+        goal_pct = map_tasks_to_goal(goal, latest.get("members_detail", []))["pct"]
+    return {"from": cutoff.isoformat(), "to": today.isoformat(), "standups": len(ents), "tasks": tasks, "blockers": nb,
+            "per_member": sorted(per_member.items(), key=lambda kv: -kv[1]), "top_blockers": [(a, b, n) for (a, b), n in top],
+            "health_avg": round(sum(health) / len(health)) if health else None, "goal_pct": goal_pct,
+            "metrics": [], "friday": today.weekday() == 4}
+
+
+def week_text(w: dict) -> str:
+    if not w["standups"]:
+        return "No standups saved in the last 7 days."
+    lines = [f"WEEKLY ROLL-UP · {w['from']} to {w['to']}", "",
+             f"Standups: {w['standups']}  ·  Tasks reported: {w['tasks']}  ·  Blockers raised: {w['blockers']}"
+             + (f"  ·  Avg health: {w['health_avg']}" if w["health_avg"] is not None else "")]
+    if w.get("goal_pct") is not None:
+        lines.append(f"Sprint goal alignment (latest standup): {w['goal_pct']}% of tasks linked")
+    lines += ["", "Tasks by person:"] + [f"- {n}: {c}" for n, c in w["per_member"]]
+    if w["top_blockers"]:
+        lines += ["", "Most persistent blockers:"] + [f"- {a}: {b} (seen {n}x)" for a, b, n in w["top_blockers"]]
+    return "\n".join(lines)
+
+
+def week_llm_paragraph(text: str, mask: bool = False):
+    src = mask_sensitive(text)[0] if mask else text
+    sysmsg = ("MODE: WEEKPARA\nYou write one short, factual paragraph (3-4 sentences) summarising a team's week from the statistics given. "
+              "Use only the numbers and names provided. Return ONLY JSON {\"paragraph\": \"...\"}. No fences, no <think> tags.")
+    try:
+        data, completion = call_llm_json(sysmsg, "WEEK_STATS:\n" + src, 0.2, 500)
+    except Exception as e:
+        return "", 0, str(e)[:200]
+    para = str(data.get("paragraph", "")).strip()
+    return para, (completion.usage.total_tokens if getattr(completion, "usage", None) else 0), ("" if para else "Empty response.")
+
+
+# ── 38: backup & restore (current team; never the PIN hash) ──
+BACKUP_SCHEMA = 1
+
+
+def build_backup() -> dict:
+    logo = load_logo()
+    return {
+        "app": "SanghaStatus", "schema_version": BACKUP_SCHEMA, "team": TEAM_SLUG,
+        "exported_at": datetime.now().isoformat(timespec="seconds"),
+        "roster": load_roster(), "presets": load_presets(), "glossary": load_glossary(),
+        "history": st.session_state.history, "sprint_goal": load_sprint_goal(),
+        "logo": ({"mime": logo[0], "b64": _b64.b64encode(logo[1]).decode()} if logo else None),
+    }
+
+
+def validate_backup(obj) -> tuple:
+    """(ok, message). Checks app marker, schema version and basic types — nothing is written here."""
+    if not isinstance(obj, dict) or obj.get("app") != "SanghaStatus":
+        return False, "This isn't a SanghaStatus backup file."
+    v = obj.get("schema_version")
+    if not isinstance(v, int) or v > BACKUP_SCHEMA or v < 1:
+        return False, f"Unsupported backup schema version ({v!r}); this app understands up to {BACKUP_SCHEMA}."
+    if not isinstance(obj.get("roster", {}), dict) or not isinstance(obj.get("presets", {}), dict) \
+            or not isinstance(obj.get("glossary", []), list) or not isinstance(obj.get("history", []), list):
+        return False, "The backup is damaged (unexpected data types)."
+    for e in obj.get("history", []):
+        if not isinstance(e, dict) or "data" not in e or "members_detail" not in e:
+            return False, "The backup's history entries are damaged."
+    return True, "ok"
+
+
+def apply_backup(obj: dict) -> None:
+    save_roster(obj.get("roster", {}))
+    save_presets(obj.get("presets", {}))
+    save_glossary(obj.get("glossary", []))
+    hist = obj.get("history", [])[:MAX_HISTORY]
+    st.session_state.history = hist
+    save_history_to_disk(hist)
+    save_sprint_goal(obj.get("sprint_goal", "") or "")
+    lg = obj.get("logo")
+    if lg and lg.get("b64"):
+        try:
+            save_logo(lg.get("mime", "image/png"), _b64.b64decode(lg["b64"]))
+        except Exception:
+            pass
+    else:
+        delete_logo()
+
+
+# ── 45: what's stored + reset ──
+def stored_data_summary() -> list:
+    rows = []
+    try:
+        conn = _get_db_conn()
+        rows.append(("history entries", conn.execute("SELECT COUNT(*) FROM history").fetchone()[0], DB_FILE))
+        for tbl, label in (("roster", "roster profile"), ("presets", "presets"), ("glossary", "glossary"), ("sprint_goal", "sprint goal"), ("ui_prefs", "interface preferences")):
+            try:
+                r = conn.execute(f"SELECT value_json FROM {tbl} WHERE team_slug=?", (TEAM_SLUG,)).fetchone()
+                n = 0
+                if r:
+                    v = json.loads(r[0])
+                    n = len(v) if isinstance(v, (list, dict)) and tbl not in ("sprint_goal", "ui_prefs") else 1
+                rows.append((label, n, tbl))
+            except Exception:
+                rows.append((label, 0, tbl))
+        try:
+            r = conn.execute("SELECT LENGTH(data) FROM team_logo WHERE team_slug=?", (TEAM_SLUG,)).fetchone()
+            rows.append(("logo (bytes)", r[0] if r else 0, "team_logo"))
+        except Exception:
+            rows.append(("logo (bytes)", 0, "team_logo"))
+        conn.close()
+    except Exception:
+        pass
+    rows.append(("team PIN", "set" if _get_team_pin_hash() else "not set", "hash never shown"))
+    return rows
+
+
+_RESET_PREF_KEYS = ("pref_tone", "pref_domain", "pref_lang", "pref_tomorrow", "pref_blockers", "pref_project", "pref_date",
+                    "pref_ui_lang", "pref_contrast", "pref_template", "pref_brand_project", "scrub_mask", "member_view_mode")
+
+
+def reset_team_preferences() -> None:
+    for k in _RESET_PREF_KEYS:
+        st.session_state.pop(k, None)
+    try:
+        conn = _get_db_conn()
+        conn.execute("CREATE TABLE IF NOT EXISTS ui_prefs (team_slug TEXT PRIMARY KEY, value_json TEXT)")
+        conn.execute("DELETE FROM ui_prefs WHERE team_slug=?", (TEAM_SLUG,))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+# ── cached wrappers for the heavy-ish pure analytics (43) ──
+@st.cache_data(show_spinner=False, max_entries=32)
+def _c_analytics(members_json: str, history_json: str, out_json: str):
+    members, history, out = json.loads(members_json), json.loads(history_json), json.loads(out_json)
+    active = [m for m in members if m["name"] not in out]
+    brief = flag_brief_updates(active, history)
+    esc = flag_recurring_blockers(active, history)
+    over = flag_overload_trend(active, history)
+    score, label = compute_health_score(active, brief, esc)
+    diffs = diff_against_previous(members, history[0]) if history else {}
+    return {"brief": brief, "esc": esc, "over": over, "score": score, "label": label, "diffs": diffs}
+
 
 
 # Command palette (Cmd/Ctrl+K) — same mechanism as SatiCast's: finds real
 # elements in the parent document and clicks them, best-effort.
-components.html("""
+_JS_PALETTE = """
 <script>
 try {
   const doc = window.parent.document;
@@ -2324,8 +3478,7 @@ try {
         } else if (cmd === 'top') {
           (doc.scrollingElement || doc.documentElement).scrollTo({ top: 0, behavior: 'smooth' });
         } else if (cmd === 'generate') {
-          const btns = Array.from(doc.querySelectorAll('button'));
-          const target = btns.find(b => b.textContent.includes('Generate Professional Status'));
+          const target = doc.querySelector('.st-key-generate_btn button');
           if (target) target.click();
         }
         closePalette();
@@ -2343,13 +3496,13 @@ try {
   }
 } catch (e) {}
 </script>
-""", height=0, width=0)
+"""
 
 # Theme sync — the CSS toggle (#dmchk) stays the single source of truth. On load we
 # apply the person's explicit saved choice if there is one, otherwise the OS preference
 # (prefers-color-scheme, also handled in pure CSS as a no-JS fallback), and we keep the
 # <meta name="theme-color"> in step. Toggling in EITHER direction is remembered.
-components.html("""
+_JS_THEME = """
 <script>
 try {
   const w = window.parent, doc = w.document;
@@ -2378,7 +3531,93 @@ try {
   }
 } catch (e) {}
 </script>
-""", height=0, width=0)
+"""
+
+# ── 39 / 40 / 42: keyboard shortcuts, aria fixes, PWA bits — ONE zero-height iframe for all page scripts.
+# The listeners are installed from a <script> element created IN the parent document so they outlive the iframe
+# (Streamlit replaces the iframe on rerun). Everything is wrapped in try/catch: cross-frame access can fail.
+# PWA note: Streamlit serves its own page, so a real offline install (service worker, start_url) is NOT possible
+# here; the manifest / apple-touch-icon / theme-color / mobile-web-app-capable tags below are best-effort polish
+# that make "Add to Home Screen" look right on phones.
+import functools as _functools
+
+
+@_functools.lru_cache(maxsize=1)
+def _pwa_icon_b64() -> str:
+    try:
+        from PIL import Image, ImageDraw
+        im = Image.new("RGB", (180, 180), (181, 83, 47))
+        d = ImageDraw.Draw(im)
+        for x in (48, 74, 100, 126):                      # little "temple" columns, echoing the topbar logo
+            d.rectangle([x, 80, x + 12, 138], fill=(255, 255, 255))
+        d.polygon([(34, 80), (90, 44), (146, 80)], fill=(255, 255, 255))
+        d.rectangle([34, 142, 146, 150], fill=(255, 255, 255))
+        buf = _io.BytesIO()
+        im.save(buf, "PNG")
+        return _b64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ""
+
+
+_JS_KEYS_TEMPLATE = r"""
+<script>
+try {
+  const w = window.parent, doc = w.document;
+  if (!w.__sanghaKeysInstalled) {
+    w.__sanghaKeysInstalled = true;
+    const code = `(function(){
+      var doc = document;
+      function typing(e){ var t=e.target; if(!t||!t.tagName) return false; var n=t.tagName.toLowerCase();
+        return n==='input'||n==='textarea'||n==='select'||t.isContentEditable||(t.getAttribute&&t.getAttribute('role')==='combobox'); }
+      function live(msg){ var l=doc.getElementById('sangha-live'); if(!l){ l=doc.createElement('div'); l.id='sangha-live'; l.className='sr-only';
+        l.setAttribute('aria-live','polite'); l.setAttribute('role','status'); doc.body.appendChild(l);} l.textContent=''; setTimeout(function(){ l.textContent=msg; },60); }
+      function toast(html, plain){ var el=doc.getElementById('sangha-toast'); if(!el){ el=doc.createElement('div'); el.id='sangha-toast'; el.setAttribute('role','status'); doc.body.appendChild(el);}
+        el.innerHTML=html; el.style.display='block'; clearTimeout(el._t); el._t=setTimeout(function(){ el.style.display='none'; }, 7000); live(plain); }
+      doc.addEventListener('keydown', function(e){
+        try {
+          if ((e.ctrlKey||e.metaKey) && e.key==='Enter') {
+            var b = doc.querySelector('.st-key-generate_btn button');
+            if (b) { e.preventDefault(); setTimeout(function(){ b.click(); }, typing(e)?350:0); }
+            return;
+          }
+          if (e.ctrlKey||e.metaKey||e.altKey||typing(e)) return;
+          if (e.key==='/') { var ta = doc.querySelector('.st-key-raw_input textarea') || doc.querySelector('[data-testid="stTextArea"] textarea'); if (ta) { e.preventDefault(); ta.focus(); live('Notes box focused'); } }
+          else if (e.key==='d'||e.key==='D') { var cb = doc.getElementById('dmchk'); if (cb) { cb.click(); live(cb.checked ? 'Dark mode on' : 'Dark mode off'); } }
+          else if (e.key==='?') { toast('<b>Shortcuts</b><br><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Generate &nbsp; <kbd>/</kbd> Focus notes<br><kbd>D</kbd> Toggle dark mode &nbsp; <kbd>Ctrl</kbd>+<kbd>K</kbd> Quick actions<br><kbd>?</kbd> This help', 'Shortcuts: Control Enter generates, slash focuses notes, D toggles dark mode, question mark shows help'); }
+        } catch (err) {}
+      }, true);
+      doc.addEventListener('click', function(e){ try { var t = e.target.closest && e.target.closest('[role="tab"]'); if (t) live('Tab ' + (t.textContent||'').trim() + ' selected'); } catch (err) {} }, true);
+      var pending = null;
+      function fixAria(){ try {
+        doc.querySelectorAll('button:not([aria-label])').forEach(function(b){
+          var t=(b.textContent||'').trim();
+          if (!/[A-Za-z0-9ऀ-ॿ]/.test(t)) { var lbl = b.getAttribute('title') || ((t.indexOf('🗑')>-1) ? 'Delete' : (b.getAttribute('data-testid')||'').replace(/^stBase?Button-?/,'') || 'Action'); b.setAttribute('aria-label', lbl); } });
+        doc.querySelectorAll('[data-testid="stToast"],[data-baseweb="toast"]').forEach(function(x){ if(!x.getAttribute('role')) x.setAttribute('role','status'); });
+      } catch (err) {} }
+      new MutationObserver(function(){ clearTimeout(pending); pending = setTimeout(fixAria, 500); }).observe(doc.body, {childList:true, subtree:true});
+      fixAria();
+    })();`;
+    const s = doc.createElement('script'); s.textContent = code; doc.head.appendChild(s);
+  }
+  // PWA bits (best-effort; see the Python comment for the offline-install limitation)
+  function ensureMeta(name, content){ var m = doc.querySelector('meta[name="'+name+'"]'); if(!m){ m = doc.createElement('meta'); m.name = name; doc.head.appendChild(m);} m.content = content; }
+  ensureMeta('mobile-web-app-capable', 'yes'); ensureMeta('apple-mobile-web-app-capable', 'yes');
+  ensureMeta('apple-mobile-web-app-title', 'SanghaStatus'); ensureMeta('application-name', 'SanghaStatus');
+  var ICON = "__ICON__";
+  if (ICON && !doc.querySelector('link[rel="apple-touch-icon"]')) {
+    var l = doc.createElement('link'); l.rel = 'apple-touch-icon'; l.href = 'data:image/png;base64,' + ICON; doc.head.appendChild(l);
+    if (!doc.querySelector('link[rel="manifest"][data-sangha]')) {
+      var man = {name:'SanghaStatus', short_name:'Sangha', display:'standalone', start_url:'.', background_color:'#fbfbfd', theme_color:'#b5532f',
+                 icons:[{src:'data:image/png;base64,' + ICON, sizes:'180x180', type:'image/png'}]};
+      var ml = doc.createElement('link'); ml.rel = 'manifest'; ml.setAttribute('data-sangha','1');
+      ml.href = 'data:application/manifest+json;base64,' + btoa(JSON.stringify(man)); doc.head.appendChild(ml);
+    }
+  }
+} catch (e) {}
+</script>
+"""
+
+components.html(_JS_PALETTE + _JS_THEME + _JS_KEYS_TEMPLATE.replace("__ICON__", _pwa_icon_b64()), height=0, width=0)
 
 # ═══════════════════════════════════════════════════
 # CADENCE REMINDER — session-visible only, no push notifications. Flags
@@ -2422,12 +3661,12 @@ with _cz_tabs[0]:
     cfg1, cfg3 = st.columns(2)
     cfg2, cfg4 = st.columns(2)
     with cfg1:
-        standup_date = st.date_input("Standup date", value=date.today(), key="pref_date")
+        standup_date = st.date_input(T("standup_date"), value=date.today(), key="pref_date")
     with cfg2:
-        tone_choice = st.radio("Tone", options=list(TONE_OPTIONS.keys()), index=1, key="pref_tone",
+        tone_choice = st.radio(T("tone"), options=list(TONE_OPTIONS.keys()), index=1, key="pref_tone",
                                horizontal=True, format_func=_plain_label)
     with cfg3:
-        domain_choice = st.selectbox("Domain", options=list(DOMAIN_OPTIONS.keys()), index=0, key="pref_domain",
+        domain_choice = st.selectbox(T("domain"), options=list(DOMAIN_OPTIONS.keys()), index=0, key="pref_domain",
                                          format_func=_plain_label)
         _prev_raw = st.session_state.get("raw_input", "")
         _suggested_domain = suggest_domain(_prev_raw)
@@ -2436,7 +3675,7 @@ with _cz_tabs[0]:
                 st.session_state.pref_domain = _suggested_domain
                 st.rerun()
     with cfg4:
-        lang_choice = st.radio("Output language", options=list(OUTPUT_LANG_OPTIONS.keys()), index=0, key="pref_lang",
+        lang_choice = st.radio(T("out_lang"), options=list(OUTPUT_LANG_OPTIONS.keys()), index=0, key="pref_lang",
                                horizontal=True, format_func=_plain_label)
 
     cfg5, cfg6, cfg7 = st.columns(3)
@@ -2449,12 +3688,12 @@ with _cz_tabs[0]:
             _remembered_project = st.session_state.history[0]["project"]
         if "pref_project" not in st.session_state:
             st.session_state["pref_project"] = _remembered_project
-        project_name = st.text_input("Project / sprint tag",
+        project_name = st.text_input(T("project_tag"),
                                      placeholder="e.g. Phoenix · Sprint 14", key="pref_project")
     with cfg6:
-        include_tomorrow = st.toggle("Include tomorrow's plan", value=False, key="pref_tomorrow")
+        include_tomorrow = st.toggle(T("incl_tomorrow"), value=False, key="pref_tomorrow")
     with cfg7:
-        include_blockers = st.toggle("Highlight blockers", value=True, key="pref_blockers")
+        include_blockers = st.toggle(T("hl_blockers"), value=True, key="pref_blockers")
 
     if "pref_your_name" not in st.session_state:
         st.session_state.pref_your_name = load_shared_settings().get("your_name", "")
@@ -2462,6 +3701,18 @@ with _cz_tabs[0]:
                               placeholder="e.g. Pranay", key="pref_your_name")
     if your_name.strip():
         save_shared_settings({"your_name": your_name.strip()})
+
+    # 30 / 41 / 40: output template, interface language, high contrast (state seeded once at the top; key-only widgets)
+    ui1, ui2, ui3 = st.columns(3)
+    with ui1:
+        st.selectbox(T("template"), options=list(TEMPLATES.keys()), key="pref_template", on_change=_save_ui_prefs,
+                     help="Standup keeps the classic output. The others swap the narrative instructions and the tab labels.")
+    with ui2:
+        st.selectbox(T("ui_lang"), options=list(UI_LANG_OPTIONS.keys()), key="pref_ui_lang", on_change=_save_ui_prefs,
+                     help="Language of the app's own labels. The language of the generated update is the 'Output language' setting above.")
+    with ui3:
+        st.toggle(T("high_contrast"), key="pref_contrast", on_change=_save_ui_prefs,
+                  help="Stronger text and border contrast. Also follows your system's 'increase contrast' setting.")
 
 # ── SETTINGS EXPORT / IMPORT — same idea as SatiCast's: download your
 # preferences as JSON, restore them on a fresh browser/session. ──
@@ -2475,6 +3726,10 @@ with _cz_tabs[4]:
         "pref_tomorrow": st.session_state.get("pref_tomorrow"),
         "pref_blockers": st.session_state.get("pref_blockers"),
         "pref_your_name": st.session_state.get("pref_your_name"),
+        "pref_template": st.session_state.get("pref_template"),
+        "pref_ui_lang": st.session_state.get("pref_ui_lang"),
+        "pref_contrast": st.session_state.get("pref_contrast"),
+        "pref_brand_project": st.session_state.get("pref_brand_project"),
     }
     ecol1, ecol2 = st.columns(2)
     with ecol1:
@@ -2495,6 +3750,97 @@ with _cz_tabs[4]:
                 st.rerun()
             except Exception as e:
                 st.error(f"Couldn't read that settings file: {e}")
+
+# ── 38 / 45: team backup & restore, what's stored, reset ──
+st.session_state.setdefault("_backup_uploader_n", 0)
+with _cz_tabs[4]:
+    st.markdown('<div class="eyebrow" style="margin-top:1.5rem;">Team backup \u00b7 roster, presets, glossary, history, sprint goal, logo</div>', unsafe_allow_html=True)
+    st.caption("Exports the CURRENT team only. The PIN hash is never included.")
+    _dl_button("Download team backup (.json)", data=json.dumps(build_backup(), indent=2, default=str),
+               file_name=f"sanghastatus_backup_{TEAM_SLUG}_{date.today().isoformat()}.json", mime="application/json", key="dl_backup")
+    _bk_file = st.file_uploader("Restore a team backup", type=["json"], key=f"backup_upload_{st.session_state['_backup_uploader_n']}")
+    if _bk_file is not None:
+        try:
+            _bk_obj = json.loads(_bk_file.getvalue().decode("utf-8"))
+        except Exception:
+            _bk_obj = None
+        _bk_ok, _bk_msg = validate_backup(_bk_obj)
+        if not _bk_ok:
+            st.error(_bk_msg)
+        else:
+            st.markdown(
+                '<div class="hint-card warn" role="alert"><div class="hint-title"><span class="glyph" aria-hidden="true">\u26a0</span> Confirm restore</div>'
+                f'<div class="hint-body">This replaces the current team\u2019s roster ({len(_bk_obj.get("roster", {}))}), presets ({len(_bk_obj.get("presets", {}))}), '
+                f'glossary ({len(_bk_obj.get("glossary", []))}), history ({len(_bk_obj.get("history", []))} entries), sprint goal and logo with the backup\u2019s '
+                f'(taken from team \u201c{_html.escape(str(_bk_obj.get("team", "?")))}\u201d, {_html.escape(str(_bk_obj.get("exported_at", "?")))}).</div></div>',
+                unsafe_allow_html=True)
+            if st.button("Yes, restore this backup", key="sec_backup_confirm_btn"):
+                apply_backup(_bk_obj)
+                st.session_state.pop("last_output", None)
+                st.session_state["_backup_uploader_n"] += 1
+                st.session_state.pop(f"sprint_goal_input_{TEAM_SLUG}", None)
+                _notify_next_run("Backup restored")
+                st.rerun()
+
+    st.markdown('<div class="eyebrow" style="margin-top:1.5rem;">What\u2019s stored for this team</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<table class="bk-table"><caption class="sr-only">Stored data for this team</caption><thead><tr><th>Item</th><th>Count</th><th>Where</th></tr></thead><tbody>'
+        + "".join(f"<tr><td>{_html.escape(str(a))}</td><td>{_html.escape(str(b))}</td><td>{_html.escape(str(c))}</td></tr>" for a, b, c in stored_data_summary())
+        + "</tbody></table>", unsafe_allow_html=True)
+    st.caption("Read-only. No secrets or PIN hash are shown. Preference keys in this session: " + (", ".join(sorted(k for k in st.session_state.keys() if isinstance(k, str) and k.startswith("pref_"))) or "none"))
+    st.markdown('<div class="eyebrow" style="margin-top:1.25rem;">' + _html.escape(T("reset")) + '</div>', unsafe_allow_html=True)
+    st.caption("Resets tone, domain, language, template, interface language, contrast and project tag for this team. History, roster, glossary and presets are kept.")
+    _rst_ok = st.checkbox("I understand \u2014 reset this team\u2019s preferences to defaults", key="reset_confirm_chk")
+    if st.button("Reset preferences", key="sec_reset_prefs_btn", disabled=not _rst_ok):
+        reset_team_preferences()
+        st.session_state.pop("reset_confirm_chk", None)
+        _notify_next_run("Preferences reset to defaults")
+        st.rerun()
+
+# ── 29 / 32: sprint goal editor + brand (logo / project header) ──
+with _cz_tabs[5]:
+    st.markdown('<div class="eyebrow">' + _html.escape(T("sprint_goal")) + ' \u00b7 tasks are linked to it by keyword overlap</div>', unsafe_allow_html=True)
+    _goal_key = f"sprint_goal_input_{TEAM_SLUG}"
+    if _goal_key not in st.session_state:
+        st.session_state[_goal_key] = load_sprint_goal()
+    st.text_input("Sprint goal", key=_goal_key, placeholder="e.g. Ship the payment gateway integration and stabilise the backend")
+    _g1, _g2, _ = st.columns([1, 1, 3])
+    with _g1:
+        if st.button("Save goal", key="sec_save_goal_btn"):
+            save_sprint_goal(st.session_state[_goal_key].strip())
+            _notify_next_run("Sprint goal saved")
+            st.rerun()
+    with _g2:
+        if st.button("Clear", key="sec_clear_goal_btn"):
+            save_sprint_goal("")
+            st.session_state.pop(_goal_key, None)
+            st.rerun()
+
+with _cz_tabs[6]:
+    st.markdown('<div class="eyebrow">Branded PDF \u00b7 project name & logo</div>', unsafe_allow_html=True)
+    st.text_input("Project name for the PDF header", key="pref_brand_project", on_change=_save_ui_prefs,
+                  placeholder="Defaults to the project / sprint tag")
+    _logo_now = load_logo()
+    _up = st.file_uploader("Logo (PNG or JPG, up to 1 MB)", type=["png", "jpg", "jpeg"], key="logo_upload")
+    if _up is not None:
+        _ub = _up.getvalue()
+        _uh = hashlib.md5(_ub).hexdigest()
+        if st.session_state.get("_logo_saved_hash") != _uh:
+            _mime, _lerr = validate_logo(_up.name, _ub)
+            if _lerr:
+                st.error(_lerr)
+            else:
+                save_logo(_mime, _ub)
+                st.session_state["_logo_saved_hash"] = _uh
+                _logo_now = load_logo()
+                _notify("Logo saved for this team")
+    if _logo_now:
+        st.image(_logo_now[1], width=120, caption="Current logo (used in the PDF header)")
+        if st.button("Remove logo", key="sec_remove_logo_btn"):
+            delete_logo()
+            st.session_state.pop("_logo_saved_hash", None)
+            _notify_next_run("Logo removed")
+            st.rerun()
 
 # ── CROSS-TEAM ROLLUP — since multi-team support already stores each
 # team's SQLite DB as its own file (".sanghastatus[_<slug>].db"), this
@@ -2651,9 +3997,9 @@ with _cz_tabs[3]:
 # ═══════════════════════════════════════════════════
 st.markdown(
     '<div class="section-head">'
-    '<div class="eyebrow">Step 1</div>'
-    '<h2>Paste your team\u2019s updates</h2>'
-    '<p>Raw notes work fine \u2014 for engineering, functional or HR teams. Names are detected automatically.</p>'
+    f'<div class="eyebrow">{_html.escape(T("step1"))}</div>'
+    f'<h2>{_html.escape(T("step1_title"))}</h2>'
+    f'<p>{_html.escape(T("step1_sub"))}</p>'
     '</div>',
     unsafe_allow_html=True
 )
@@ -2688,6 +4034,22 @@ if GITHUB_PULL_ENABLED:
             st.rerun()
         else:
             st.caption("No GitHub activity found in the last 24h, or the pull failed.")
+
+def _do_prefill():
+    _txt = build_prefill_text(st.session_state.history)
+    if not _txt:
+        st.session_state["_prefill_msg"] = "No saved standup yet to carry over from."
+        return
+    _cur = st.session_state.get("raw_input", "").strip()
+    st.session_state["raw_input"] = (_cur + "\n\n" + _txt) if _cur else _txt
+    st.session_state["_prefill_msg"] = "Filled with yesterday\u2019s open tasks and unresolved blockers \u2014 edit as needed."
+
+
+st.button(T("prefill"), key="prefill_btn", on_click=_do_prefill,
+          help="Adds each member's still-open tasks and unresolved blockers from the last saved standup")
+_pf_msg = st.session_state.pop("_prefill_msg", "")
+if _pf_msg:
+    st.caption(_pf_msg)
 
 # ── QUICK POLL / Q&A — Streamlit has no live multi-user voting, so this is
 # a lightweight "attach a question" feature: whatever's typed here gets
@@ -2735,18 +4097,41 @@ _warn = looks_malformed(raw_updates, members)
 if _warn and raw_updates.strip():
     st.caption(f"Heads up: {_warn}")
 
+# ── 37: inline input-validation hints (deterministic, before Generate) ──
+_hints = validate_input(raw_updates, members, expect_blockers=bool(st.session_state.get("pref_blockers", True)))
+if _hints:
+    st.markdown(
+        '<div class="hint-card" role="note"><div class="hint-title"><span class="glyph" aria-hidden="true">\u24d8</span> '
+        f'Before you generate \u2014 {len(_hints)} thing{"s" if len(_hints) != 1 else ""} to check</div><ul>'
+        + "".join(f"<li>{_html.escape(h)}</li>" for h in _hints) + "</ul></div>",
+        unsafe_allow_html=True
+    )
+
+# ── 35: sensitive-data scrubber — warn + "Mask before sending" (default ON). Masks the PROMPT payload only. ──
+st.session_state.setdefault("scrub_mask", True)
+_scrub_found = mask_sensitive(_effective_raw)[1] if raw_updates.strip() else []
+if _scrub_found:
+    _items = ", ".join(f"{f['count']}\u00d7 {f['type'].replace('-', ' ').lower()} ({_html.escape(f['preview'])})" for f in _scrub_found)
+    st.markdown(
+        '<div class="hint-card warn" role="alert"><div class="hint-title"><span class="glyph" aria-hidden="true">\u26a0</span> '
+        f'Sensitive data detected in your notes</div><div class="hint-body">Found: {_items}. '
+        'Secrets and personal details should not be sent to an AI model.</div></div>',
+        unsafe_allow_html=True
+    )
+    st.toggle("Mask before sending (replaces them with [REDACTED-TYPE] in what the AI sees; your notes stay as typed)", key="scrub_mask")
+
 if members:
     total_tasks    = sum(m["count"] for m in members)
     total_blockers = sum(len(m["blockers"]) for m in members)
     st.markdown(
-        '<div class="section-head" style="margin-bottom:0;"><div class="eyebrow">Step 2</div><h2>Your team at a glance</h2></div>',
+        f'<div class="section-head" style="margin-bottom:0;"><div class="eyebrow">{_html.escape(T("step2"))}</div><h2>{_html.escape(T("step2_title"))}</h2></div>',
         unsafe_allow_html=True
     )
     st.markdown(
         f'<div class="stats-row reveal">'
-        f'<div class="stat-chip"><div class="stat-val">{len(members)}</div><div class="stat-lbl">Members</div></div>'
-        f'<div class="stat-chip"><div class="stat-val">{total_tasks}</div><div class="stat-lbl">Tasks</div></div>'
-        f'<div class="stat-chip"><div class="stat-val">{total_blockers}</div><div class="stat-lbl">Blockers</div></div>'
+        f'<div class="stat-chip"><div class="stat-val">{len(members)}</div><div class="stat-lbl">{T("members")}</div></div>'
+        f'<div class="stat-chip"><div class="stat-val">{total_tasks}</div><div class="stat-lbl">{T("tasks")}</div></div>'
+        f'<div class="stat-chip"><div class="stat-val">{total_blockers}</div><div class="stat-lbl">{T("blockers")}</div></div>'
         f'</div>',
         unsafe_allow_html=True
     )
@@ -2815,7 +4200,7 @@ if members:
     # narrative prompt context and from blocker-escalation nagging for the
     # day, without deleting their pasted update from the raw text. ──
     _out_today = st.multiselect(
-        "Who\u2019s out today? (excluded from escalation nagging; noted in the generated narrative)",
+        T("whos_out") + " (excluded from escalation nagging; noted in the generated narrative)",
         options=[m["name"] for m in members], default=[], key="out_today_members"
     )
 
@@ -2845,7 +4230,7 @@ if members:
         _is_out = m["name"] in _out_today
         _badges = f'<span class="pill">{m["count"]} task{"s" if m["count"] != 1 else ""}</span>'
         if _n_b:
-            _badges += f'<span class="pill pill-block">{_n_b} blocker{"s" if _n_b > 1 else ""}</span>'
+            _badges += f'<span class="pill pill-block"><span aria-hidden="true">\u26a0</span> {_n_b} blocker{"s" if _n_b > 1 else ""}</span>'
         if _is_out:
             _badges += '<span class="pill pill-out">Out today</span>'
         chips += (
@@ -2871,9 +4256,10 @@ if members:
     # any individual. Members marked out-today are excluded so a day off
     # doesn't get counted as a brief/silent update or a dropped blocker. ──
     _active_members = [m for m in members if m["name"] not in _out_today]
-    _brief_flags_now = flag_brief_updates(_active_members, st.session_state.history)
-    _escalations_now = flag_recurring_blockers(_active_members, st.session_state.history)
-    _health_score, _health_label = compute_health_score(_active_members, _brief_flags_now, _escalations_now)
+    # 43: heavy-ish pure analytics cached on their inputs (not recomputed on every widget rerun)
+    _an = _c_analytics(json.dumps(members), json.dumps(st.session_state.history, default=str), json.dumps(list(_out_today)))
+    _brief_flags_now, _escalations_now = _an["brief"], _an["esc"]
+    _health_score, _health_label = _an["score"], _an["label"]
     _health_color = ("#34c759" if _health_score >= 85 else "#ffb020" if _health_score >= 60
                       else "#ff8a3d" if _health_score >= 35 else "#ff453a")
     _hr_c = 2 * 3.14159265 * 34
@@ -2885,7 +4271,7 @@ if members:
         f'<circle class="hr-val" cx="42" cy="42" r="34" fill="none" stroke-width="7" stroke-linecap="round" '
         f'stroke="{_health_color}" stroke-dasharray="{_hr_c:.2f}" stroke-dashoffset="{_hr_off:.2f}" style="--hr-c:{_hr_c:.2f}"/></svg>'
         f'<div class="hr-num">{_health_score}</div></div>'
-        f'<div><div class="eyebrow">Standup health</div><div class="health-label">{_html.escape(str(_health_label))}</div>'
+        f'<div><div class="eyebrow">Standup health</div><div class="health-label"><span aria-hidden="true">{_HEALTH_GLYPH.get(str(_health_label), "")}</span> {_html.escape(str(_health_label))}</div>'
         f'<div class="health-sub">Heuristic from blocker &amp; brevity signals \u2014 not a scientific metric</div></div>'
         f'</div>',
         unsafe_allow_html=True
@@ -2929,7 +4315,7 @@ if members:
     # badge on the member chip and NEVER included in any exported/shared
     # output (chat/email/Slack/Jira/etc.) — see flag_overload_trend()'s
     # docstring for why this stays a non-diagnostic cue, not a label. ──
-    _overload_trend = flag_overload_trend(_active_members, st.session_state.history)
+    _overload_trend = _an["over"]
     if _overload_trend:
         with _sub_expander("Worth a check-in (private \u2014 not shown in any export)", expanded=False):
             st.caption(
@@ -2985,9 +4371,43 @@ if members:
             else:
                 st.caption(f"No saved entries yet mention {_picked_hist_member}.")
 
+    # ── 27: blocker owner + needs-by (text inputs; goes into the prompt, the Blockers tab, the history entry) ──
+    _all_blockers = [(m["name"], b) for m in members for b in m["blockers"]]
+    if _all_blockers:
+        with _sub_expander(f"Blocker owners & needed-by dates ({len(_all_blockers)})", expanded=False):
+            st.caption("Optional. Added to the generated blockers and saved with this standup. \u201cNeeds by\u201d accepts a date or words like Friday / tomorrow / next week.")
+            for _bn, _bt in _all_blockers:
+                _bk = _bk_key(_bn, _bt)
+                st.markdown(f"**{_html.escape(_bn)}** \u2014 {_html.escape(_bt)}")
+                _b1, _b2 = st.columns(2)
+                with _b1:
+                    st.text_input(f"Owner \u00b7 {_bn}", key=f"bk_owner_{_bk}", placeholder="Who is unblocking this?")
+                with _b2:
+                    st.text_input(f"Needs by \u00b7 {_bn}", key=f"bk_due_{_bk}", placeholder="e.g. Friday or 2026-11-06")
+                _due_txt = st.session_state.get(f"bk_due_{_bk}", "")
+                if _due_txt.strip():
+                    _rd = _resolve_due(_due_txt, standup_date)
+                    st.caption(f"\u2192 {fmt_short_date(date.fromisoformat(_rd))}" if _rd else "Couldn\u2019t read that date \u2014 it will be kept as written.")
+
+    # ── 29: sprint goal tracker ──
+    _sprint_goal = load_sprint_goal()
+    if _sprint_goal:
+        _gm = map_tasks_to_goal(_sprint_goal, members)
+        st.markdown(
+            f'<div class="goal-card reveal"><div class="eyebrow">{_html.escape(T("sprint_goal"))}</div>'
+            f'<div class="goal-text">{_html.escape(_sprint_goal)}</div>'
+            f'<div class="goal-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{_gm["pct"]}" aria-label="Tasks linked to the sprint goal">'
+            f'<i style="width:{_gm["pct"]}%"></i></div>'
+            f'<div class="goal-meta"><b>{_gm["pct"]}%</b> of tasks linked to the goal ({len(_gm["linked"])} of {len(_gm["linked"]) + len(_gm["unlinked"])})</div></div>',
+            unsafe_allow_html=True)
+        if _gm["unlinked"]:
+            with _sub_expander(f"Not linked to the goal ({len(_gm['unlinked'])})", expanded=False):
+                for _un, _ut in _gm["unlinked"]:
+                    st.markdown(f"- \u25cb **{_html.escape(_un)}** \u2014 {_html.escape(_ut)}")
+
     # ── DIFF AGAINST YESTERDAY — actual side-by-side before/after ──
     if st.session_state.history:
-        diffs = diff_against_previous(members, st.session_state.history[0])
+        diffs = _an["diffs"]
         if diffs:
             rows = ""
             for name, pairs in diffs.items():
@@ -3012,7 +4432,7 @@ if members:
         # ── BRIEF-UPDATE NOTICE — purely a word-count comparison against the
         # person's own history, NOT a claim about mood or wellbeing. Skips
         # anyone marked out-today, same as the health-score computation. ──
-        brief_flags = flag_brief_updates(_active_members, st.session_state.history)
+        brief_flags = _brief_flags_now
         if brief_flags:
             brief_lines = "".join(
                 f'<div class="bp-line"><strong>{name}:</strong> '
@@ -3031,7 +4451,7 @@ if members:
         # blocker sitting untouched that long usually means it needs help
         # above the team. Anyone marked out-today is skipped — a blocker
         # they own doesn't age while they're away. ──
-        escalations = flag_recurring_blockers(_active_members, st.session_state.history)
+        escalations = _escalations_now
         if escalations:
             # Color shifts amber (2 days seen) → red (3+ days) instead of a
             # single flat red callout, so the longest-unresolved blockers
@@ -3046,7 +4466,8 @@ if members:
 
             esc_lines = "".join(
                 f'<div class="bp-line" style="color:{_esc_color(days)} !important;">'
-                f'<strong>{name}:</strong> "{text}" — seen {days} days running</div>'
+                f'<strong>{name}:</strong> "{text}" — seen {days} days running '
+                f'<span class="sev-tag">{_sev_tag(days)}</span></div>'
                 for name, items in escalations.items()
                 for text, days in items
             )
@@ -3074,7 +4495,7 @@ else:
     st.markdown(
         '<div class="empty-state">'
         f'{_empty_svg}'
-        '<div class="empty-state-title">Paste your team\u2019s updates to get started</div>'
+        f'<div class="empty-state-title">{_html.escape(T("empty_title"))}</div>'
         '<div class="empty-state-sub">One line per person as a header (e.g. "Alice:"), followed by bullet points — '
         'members, tasks and blockers are detected automatically.</div>'
         '</div>',
@@ -3103,6 +4524,64 @@ polished narrative, chat update, WhatsApp message, email, and more — all edita
             save_shared_settings({"onboarded": True})
 
 
+def _render_audience_tab(res: dict):
+    """23: per-audience rewrites. One LLM call per button; results are stored in last_output so they
+    survive reruns. The client version hides internal blockers and @mentions (prompt + deterministic filter)."""
+    st.caption("One AI call per button, written from your current narrative. The client version hides internal blockers and @mentions.")
+    _blk = [b for m in (res.get("members") or []) for b in m.get("blockers", [])]
+    _cols = st.columns(3)
+    for _col, (_k, (_label, _)) in zip(_cols, AUDIENCE_OPTIONS.items()):
+        with _col:
+            if st.button(_label, key=f"aud_{_k}", help=("Hides internal blockers and @mentions" if _k == "client" else None)):
+                with st.spinner(f"Writing {_label.lower()}…"):
+                    _txt, _toks, _err = audience_rewrite(_k, current_texts(res)["narrative"], _blk, mask=res.get("mask", False))
+                if _err:
+                    st.error(f"Couldn't write that version: {_err}")
+                else:
+                    res.setdefault("audience", {})[_k] = _txt
+                    res["run_tokens"] = res.get("run_tokens", 0) + _toks
+                    st.session_state.session_tokens += _toks
+    _any = False
+    for _k, (_label, _) in AUDIENCE_OPTIONS.items():
+        _txt = (res.get("audience") or {}).get(_k)
+        if _txt:
+            _any = True
+            st.markdown(f'<div class="eyebrow" style="margin-top:1rem;" role="heading" aria-level="3">{_html.escape(_label)}</div>', unsafe_allow_html=True)
+            st.code(_txt, language="text")
+    if not _any:
+        st.caption("Nothing written yet — pick an audience above.")
+
+
+def _render_week_tab(res: dict):
+    """28: Friday roll-up of the last 7 days from saved history (deterministic) + optional LLM paragraph."""
+    try:
+        _base = date.fromisoformat(res.get("base_date") or date.today().isoformat())
+    except Exception:
+        _base = date.today()
+    _w = week_stats(json.dumps(st.session_state.history, default=str), _base.isoformat(), load_sprint_goal())
+    _title = "Friday roll-up" if _w["friday"] else "Last 7 days"
+    st.markdown(
+        f'<div class="eyebrow" role="heading" aria-level="3">{_title} · {_w["from"]} → {_w["to"]}</div>'
+        f'<div class="stats-row"><div class="stat-chip"><div class="stat-val">{_w["standups"]}</div><div class="stat-lbl">Standups</div></div>'
+        f'<div class="stat-chip"><div class="stat-val">{_w["tasks"]}</div><div class="stat-lbl">Tasks</div></div>'
+        f'<div class="stat-chip"><div class="stat-val">{_w["blockers"]}</div><div class="stat-lbl">Blockers</div></div></div>',
+        unsafe_allow_html=True)
+    _txt = week_text(_w)
+    st.code(_txt, language="text")
+    _pk = f"week_para_{TEAM_SLUG}"
+    if st.button("Add an AI summary paragraph (one AI call)", key="week_llm_btn"):
+        with st.spinner("Summarising the week…"):
+            _para, _toks, _err = week_llm_paragraph(_txt, mask=res.get("mask", False))
+        if _err:
+            st.error(f"Couldn't write the summary: {_err}")
+        else:
+            st.session_state[_pk] = _para
+            st.session_state.session_tokens += _toks
+    if st.session_state.get(_pk):
+        st.markdown('<div class="eyebrow" style="margin-top:1rem;">AI summary</div>', unsafe_allow_html=True)
+        st.code(st.session_state[_pk], language="text")
+
+
 def render_output(res):
     """Render the generated-output section purely from a stored result dict.
     No LLM/DB/history writes happen here, so it is safe to call on every rerun."""
@@ -3118,6 +4597,7 @@ def render_output(res):
     body_lines = [l for l in lines if l != subj_line]
     body_text  = "\n".join(body_lines).strip()
     mailto     = mailto_link(subj, body_text)
+    tpl        = TEMPLATES.get(res.get("template", "Standup"), TEMPLATES["Standup"])
 
     # ── TABBED OUTPUT PANEL — all generated formats switch via
     # st.tabs() instead of stacking every card down the page; all
@@ -3130,11 +4610,14 @@ def render_output(res):
 
     # On the first render after a fresh generation, overwrite any text edits / ticked
     # checkboxes left over from the PREVIOUS output; afterwards (reruns) leave them alone.
-    if res.pop("fresh", False):
+    _fresh = res.pop("fresh", False)
+    _refresh = res.pop("refresh_edits", False)       # revise / version-restore: reset text edits but keep ticked action items
+    if _fresh or _refresh:
         for _k, _v in (("edit_narrative", narrative), ("edit_chat", chat), ("edit_whatsapp", wa),
                        ("edit_jira", jira_markup), ("edit_teams", teams_markup),
                        ("edit_discord", discord_markup), ("edit_email", email_raw)):
             st.session_state[_k] = _v
+    if _fresh:
         for _k in [k for k in st.session_state.keys() if isinstance(k, str) and k.startswith("action_item_")]:
             st.session_state[_k] = False
     for _k, _v in (("edit_narrative", narrative), ("edit_chat", chat), ("edit_whatsapp", wa),
@@ -3142,18 +4625,27 @@ def render_output(res):
                    ("edit_discord", discord_markup), ("edit_email", email_raw)):
         st.session_state.setdefault(_k, _v)
 
-    _tab_labels = ["Narrative", "Chat", "WhatsApp", "Jira/Confluence", "Teams", "Discord", "Email"]
-    if res["include_tomorrow"] and data.get("tomorrow_plan"):
-        _tab_labels.append("Tomorrow")
-    if res["include_blockers"] and data.get("blocker_summary"):
-        _tab_labels.append("Blockers")
+    _tab_labels = [tpl["tab_narrative"], "Chat", "WhatsApp", "Jira/Confluence", "Teams", "Discord", "Email"]
+    _show_tomorrow = bool(res["include_tomorrow"] and data.get("tomorrow_plan"))
+    _show_blockers = bool((res["include_blockers"] and data.get("blocker_summary")) or res.get("blocker_meta"))
+    if _show_tomorrow:
+        _tab_labels.append(tpl["tab_tomorrow"])
+    if _show_blockers:
+        _tab_labels.append(tpl["tab_blockers"])
+    _tab_labels += ["Audience", "Week"]
+
+    # 24: "By the numbers" strip (deterministic, from the notes) above the tabs
+    if res.get("metrics"):
+        _chips = "".join(f'<span class="ns-chip"><b>{n}</b> {_html.escape(l)}</span>' for l, n in res["metrics"][:6])
+        st.markdown(f'<div class="numbers-strip" role="group" aria-label="By the numbers"><span class="ns-label">By the numbers</span>{_chips}</div>',
+                    unsafe_allow_html=True)
     _tabs = st.tabs(_tab_labels)
     _tab_iter = iter(_tabs)
 
     with next(_tab_iter):
         st.markdown(
             '<div class="colored-block narrative-block">'
-            '<div class="block-title narrative-title"><span class="block-title-text"><span class="block-icon-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 10h12M4 14h16M4 18h10"/></svg></span>Standup Narrative</span></div>',
+            '<div class="block-title narrative-title"><span class="block-title-text"><span class="block-icon-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 10h12M4 14h16M4 18h10"/></svg></span>' + _html.escape(tpl["narr_title"]) + '</span></div>',
             unsafe_allow_html=True
         )
         st.text_area("Narrative", height=dynamic_ta_height(narrative), key="edit_narrative", label_visibility="collapsed")
@@ -3254,23 +4746,36 @@ def render_output(res):
         st.text_area("Email", height=dynamic_ta_height(email_raw), key="edit_email", label_visibility="collapsed")
         render_copy_button(email_raw, "email")
 
-    if res["include_tomorrow"] and data.get("tomorrow_plan"):
+    if _show_tomorrow:
         with next(_tab_iter):
             st.markdown(
                 '<div class="colored-block tomorrow-block">'
-                '<div class="block-title tomorrow-title"><span class="block-title-text"><span class="block-icon-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10h16M8 3v4M16 3v4"/></svg></span>Tomorrow\'s Plan</span></div>',
+                '<div class="block-title tomorrow-title"><span class="block-title-text"><span class="block-icon-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10h16M8 3v4M16 3v4"/></svg></span>' + _html.escape(tpl["tomorrow_title"]) + '</span></div>',
                 unsafe_allow_html=True
             )
             st.code(data["tomorrow_plan"], language="text")
 
-    if res["include_blockers"] and data.get("blocker_summary"):
+    if _show_blockers:
         with next(_tab_iter):
             st.markdown(
                 '<div class="colored-block blocker-block">'
-                '<div class="block-title blocker-title"><span class="block-title-text"><span class="block-icon-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3zM12 10v4M12 17h.01"/></svg></span>Blockers Summary</span></div>',
+                '<div class="block-title blocker-title"><span class="block-title-text"><span class="block-icon-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3zM12 10v4M12 17h.01"/></svg></span>' + _html.escape(tpl["blockers_title"]) + '</span></div>',
                 unsafe_allow_html=True
             )
-            st.code(data["blocker_summary"], language="text")
+            if data.get("blocker_summary"):
+                st.code(data["blocker_summary"], language="text")
+            _mrows = _meta_rows(res)
+            if _mrows:
+                st.markdown(
+                    '<table class="bk-table"><caption class="sr-only">Blocker owners and needed-by dates</caption><thead><tr><th>Person</th><th>Blocker</th><th>Owner</th><th>Needed by</th></tr></thead><tbody>'
+                    + "".join(f"<tr><td>{_html.escape(a)}</td><td>\u25b2 {_html.escape(b)}</td><td>{_html.escape(c)}</td><td>{_html.escape(d)}</td></tr>" for a, b, c, d in _mrows)
+                    + "</tbody></table>", unsafe_allow_html=True)
+
+    # ── Audience + Week tabs (always the last two) ──
+    with next(_tab_iter):
+        _render_audience_tab(res)
+    with next(_tab_iter):
+        _render_week_tab(res)
 
     run_tokens = res["run_tokens"]
     st.markdown(
@@ -3281,67 +4786,164 @@ def render_output(res):
         unsafe_allow_html=True
     )
 
-    dl_col1, dl_col2 = st.columns(2)
-    with dl_col1:
-        docx_bytes, docx_err = build_docx_export(data, fmt_date, prepared_by=res["prepared_by"])
+    # ── 21: edit-after-generate loop — revise the CURRENT stored output (not the raw notes) ──
+    st.markdown(f'<div class="eyebrow" style="margin-top:1.25rem;" role="heading" aria-level="3">{_html.escape(T("refine"))}</div>', unsafe_allow_html=True)
+    _rv_cols = st.columns(4)
+    for _col, (_rk, (_rlabel, _)) in zip(_rv_cols, REVISE_OPTIONS.items()):
+        with _col:
+            if st.button(_rlabel, key=f"rev_{_rk}"):
+                _t = current_texts(res)
+                _fields = {"standup_narrative": _t["narrative"], "chat_update": _t["chat"],
+                           "whatsapp_update": _t["wa"], "email_update": _t["email"]}
+                if _t["tomorrow"]:
+                    _fields["tomorrow_plan"] = _t["tomorrow"]
+                if _t["blockers"]:
+                    _fields["blocker_summary"] = _t["blockers"]
+                with st.spinner(f"Making it {_rlabel.lower()}…"):
+                    _new, _toks, _err = revise_output(_fields, _rk, mask=res.get("mask", False))
+                if _err or not _new:
+                    st.error(f"Couldn't revise: {_err or 'no result'}. Your current output is unchanged.")
+                else:
+                    res["data"] = {**res["data"], **_new}
+                    res["narrative"] = _new.get("standup_narrative", res["narrative"])
+                    res["chat"] = _new.get("chat_update", res["chat"])
+                    res["wa"] = _new.get("whatsapp_update", res["wa"])
+                    res["email_raw"] = _new.get("email_update", res["email_raw"])
+                    res["versions"] = ((res.get("versions") or []) + [_make_version_snapshot(res, _rlabel)])[-3:]
+                    res["refresh_edits"] = True
+                    res["run_tokens"] = res.get("run_tokens", 0) + _toks
+                    st.session_state.session_tokens += _toks
+                    _persist_output_to_history(res)
+                    st.session_state.pop("ver_pick", None)
+                    _notify_next_run(f"Updated: {_rlabel}")
+                    st.rerun()
+
+    # ── 36: version history (last 3) ──
+    _vers = res.get("versions") or []
+    if len(_vers) > 1:
+        _vlabels = [f"v{v['n']} · {v['label']} · {v['ts']}" for v in reversed(_vers)]
+        _vc1, _vc2 = st.columns([3, 1])
+        with _vc1:
+            _vpick = st.selectbox("Versions", _vlabels, key="ver_pick")
+        with _vc2:
+            st.write("")
+            if st.button("Restore", key="ver_restore_btn"):
+                _apply_snapshot(res, _vers[len(_vers) - 1 - _vlabels.index(_vpick)])
+                _persist_output_to_history(res)
+                _notify_next_run(f"Restored {_vpick.split(' · ')[0]}")
+                st.rerun()
+
+    # ── 22: consistency check card (deterministic) ──
+    if res.get("members"):
+        _t = current_texts(res)
+        _chk = _cached_consistency(json.dumps(res["members"]), json.dumps([_t["narrative"], _t["chat"], _t["wa"], _t["email"]]))
+        _ok = not _chk["missing"] and not _chk["unsupported"]
+        _glyph = "✓" if _ok else "⚠"
+        _body = ""
+        if _ok:
+            _body = f"Every one of the {_chk['tasks']} tasks in your notes appears in the output, and every output sentence traces back to your notes."
+        else:
+            if _chk["missing"]:
+                _body += f'<div class="chk-h">Tasks in your notes that seem missing from the output ({len(_chk["missing"])})</div><ul>' + "".join(
+                    f"<li><b>{_html.escape(n)}</b>: {_html.escape(t)}</li>" for n, t in _chk["missing"][:6]) + "</ul>"
+            if _chk["unsupported"]:
+                _body += f'<div class="chk-h">Output sentences with no source in your notes ({len(_chk["unsupported"])})</div><ul>' + "".join(
+                    f"<li>{_html.escape(x)}</li>" for x in _chk["unsupported"][:6]) + "</ul>"
+        st.markdown(
+            f'<div class="hint-card {"ok" if _ok else "warn"} check-card" role="note"><div class="hint-title"><span class="glyph" aria-hidden="true">{_glyph}</span> '
+            f'Check — notes vs. output <span class="chk-sub">(fuzzy text match, no AI)</span></div>{_body}</div>',
+            unsafe_allow_html=True)
+
+    # ── downloads: docx / pdf / md / html ──
+    _brand_project = (st.session_state.get("pref_brand_project", "") or res.get("project", "")).strip()
+    _logo = load_logo()
+    _logo_bytes = _logo[1] if _logo else b""
+    dl1, dl2, dl3, dl4 = st.columns(4)
+    with dl1:
+        docx_bytes, docx_err = _cached_docx(json.dumps(data, default=str), fmt_date, res["prepared_by"], res.get("template", "Standup"),
+                                             json.dumps(res.get("blocker_meta") or []), _brand_project)
         if docx_bytes:
             _dl_button(
-                "Download as Word (.docx)", data=docx_bytes,
+                "Download Word (.docx)", data=docx_bytes,
                 file_name=f"status_{date.today().isoformat()}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key="dl_docx", use_container_width=True
+                key="dl_docx"
             )
         elif docx_err:
             st.caption(f"Word export unavailable: {docx_err}")
-    with dl_col2:
-        pdf_bytes, pdf_err = build_pdf_export(data, fmt_date, prepared_by=res["prepared_by"])
+    with dl2:
+        pdf_bytes, pdf_err = _cached_pdf(json.dumps(data, default=str), fmt_date, res["prepared_by"], _brand_project, _logo_bytes,
+                                         res.get("template", "Standup"), json.dumps(res.get("blocker_meta") or []))
         if pdf_bytes:
             _dl_button(
-                "Download as PDF", data=pdf_bytes,
+                "Download PDF", data=pdf_bytes,
                 file_name=f"status_{date.today().isoformat()}.pdf",
-                mime="application/pdf", key="dl_pdf", use_container_width=True
+                mime="application/pdf", key="dl_pdf"
             )
         elif pdf_err:
             st.caption(f"PDF export unavailable: {pdf_err}")
+    with dl3:
+        _dl_button("Download Markdown (.md)", data=build_markdown_export(res), file_name=f"status_{date.today().isoformat()}.md",
+                   mime="text/markdown", key="dl_md")
+    with dl4:
+        _dl_button("Download HTML (.html)", data=build_html_export(res), file_name=f"status_{date.today().isoformat()}.html",
+                   mime="text/html", key="dl_html")
 
-    # ── ACTION ITEMS — regex-extracted "will [X] by [when]" phrases
-    # from the raw updates, surfaced as a checklist to reference
-    # tomorrow. Session-only (not persisted to disk); simple and
-    # deliberately not exhaustive — see extract_action_items(). ──
+    # ── 33: formatted clipboard copies (rich text + plain-text fallback) ──
+    _md_now = build_markdown_export(res)
+    _cp1, _cp2, _cp3 = st.columns([1, 1, 2])
+    with _cp1:
+        render_copy_button(_md_now, "confluence", "Copy for Confluence", html=simple_md_to_html(_md_now))
+    with _cp2:
+        render_copy_button(_md_now, "notion", "Copy for Notion", html=simple_md_to_html(_md_now))
+
+    # ── ACTION ITEMS — regex-extracted "will [X] by [when]" phrases from the raw updates (+ 25: concrete dates) ──
     _action_items = res["action_items"]
-    # ── FOLLOW-THROUGH ON YESTERDAY'S ACTION ITEMS — fuzzy-matches
-    # yesterday's extracted action items against today's completed
-    # tasks for the same person (check_action_item_followthrough). ──
     _followthrough = res["followthrough"]
     if _followthrough:
         st.markdown(
             '<div class="colored-block tomorrow-block">'
-            '<div class="block-title tomorrow-title"><span class="block-title-text">'
+            '<div class="block-title tomorrow-title" role="heading" aria-level="3"><span class="block-title-text">'
             '<span class="block-icon-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></svg></span>Yesterday\'s Action Items — Follow-through</span></div>',
             unsafe_allow_html=True
         )
         for _ft in _followthrough:
-            _status = "appears done" if _ft["done"] else "still open"
+            _status = "✓ appears done" if _ft["done"] else "○ still open"
             st.markdown(f"- **{_ft['name']}** — {_ft['text']} (was due {_ft['when']}) — {_status}")
         st.caption("Heuristic fuzzy text match against today's tasks — not a verified completion.")
-    if _action_items:
+    if _action_items or res.get("dated"):
         st.markdown(
             '<div class="colored-block tomorrow-block">'
-            '<div class="block-title tomorrow-title"><span class="block-title-text">'
+            '<div class="block-title tomorrow-title" role="heading" aria-level="3"><span class="block-title-text">'
             '<span class="block-icon-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12l2 2 4-4M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/></svg></span>Action Items</span></div>',
             unsafe_allow_html=True
         )
         for _ai_idx, _ai in enumerate(_action_items):
+            _dtxt = ""
+            if _ai.get("date"):
+                try:
+                    _dtxt = f" → {fmt_short_date(date.fromisoformat(_ai['date']))}"
+                except Exception:
+                    pass
             st.checkbox(
-                f"**{_ai['name']}** — {_ai['text']} (by {_ai['when']})",
+                f"**{_ai['name']}** — {_ai['text']} (by {_ai['when']}{_dtxt})",
                 key=f"action_item_{_ai_idx}_{hashlib.md5(_ai['text'].encode()).hexdigest()[:8]}"
             )
+        _ai_texts = {a["text"] for a in _action_items}
+        _extra = [d for d in (res.get("dated") or []) if not any(t and t in d["text"] for t in _ai_texts)]
+        if _extra:
+            st.caption("Other dates mentioned in the notes, resolved against the standup date:")
+            for _d in _extra:
+                try:
+                    st.markdown(f"- **{_d['name']}** — {_d['text']} → *{_d['phrase']}* = **{fmt_short_date(date.fromisoformat(_d['date']))}**")
+                except Exception:
+                    pass
 
 
 # ═══════════════════════════════════════════════════
 # GENERATE
 # ═══════════════════════════════════════════════════
-generate = st.button("Generate Professional Status", key="generate_btn", type="primary")
+generate = st.button(T("generate"), key="generate_btn", type="primary")
 
 if generate:
     if not raw_updates.strip():
@@ -3360,6 +4962,11 @@ if generate:
             domain_str  = DOMAIN_OPTIONS[domain_choice]
             lang_str    = OUTPUT_LANG_OPTIONS[lang_choice]
 
+            # 35: mask secrets/PII in the PROMPT PAYLOAD only (stored raw notes stay untouched).
+            _payload_raw = mask_sensitive(_effective_raw)[0] if (_scrub_found and st.session_state.get("scrub_mask", True)) else _effective_raw
+            _blocker_meta = _collect_blocker_meta(members, standup_date)
+            _blocker_meta_note = blocker_meta_prompt(_blocker_meta)
+            _tpl = st.session_state.get("pref_template", "Standup")
             _out_today_now = st.session_state.get("out_today_members", [])
             _out_today_note = (
                 f"\nOut today (do not schedule new tasks for them tomorrow; mention briefly if relevant): "
@@ -3369,16 +4976,18 @@ if generate:
 Use this date for all sections: {fmt_date}
 Project/Sprint: {project_name or "General"}
 Team Members detected: {len(members)} ({', '.join(m['name'] for m in members)})
-{_out_today_note}
+{_out_today_note}{_blocker_meta_note}
 Raw Updates:
-{_effective_raw}
+{_payload_raw}
 
 Embed the project tag "{project_tag}" in the chat_update header and email subject line.
 """
+            if _scrub_found and st.session_state.get("scrub_mask", True):
+                prompt_payload = mask_sensitive(prompt_payload)[0]      # 35: everything that leaves the app is masked, incl. blocker notes
             _glossary_block = glossary_prompt_block(load_glossary())
-            narrative_prompt = build_narrative_prompt(tone_instr, domain_str, lang_str, include_tomorrow, include_blockers, _glossary_block)
-            chat_prompt       = build_chat_prompt(tone_instr, domain_str, lang_str, _glossary_block)
-            email_prompt      = build_email_prompt(tone_instr, domain_str, lang_str, _glossary_block)
+            narrative_prompt = build_narrative_prompt(tone_instr, domain_str, lang_str, include_tomorrow, include_blockers, _glossary_block, template=_tpl)
+            chat_prompt       = build_chat_prompt(tone_instr, domain_str, lang_str, _glossary_block, template=_tpl)
+            email_prompt      = build_email_prompt(tone_instr, domain_str, lang_str, _glossary_block, template=_tpl)
 
             slot.markdown(render_loader(1), unsafe_allow_html=True)
 
@@ -3444,12 +5053,16 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
             # so we can diff today's tasks against it.
             previous_entry = st.session_state.history[0] if st.session_state.history else None
 
+            _saved_at_now = datetime.now().isoformat()
+            if _blocker_meta:
+                data["blocker_meta"] = _blocker_meta      # 27: persisted with the history entry
+            data["template"] = _tpl
             st.session_state.history.insert(0, {
                 "date": fmt_date, "project": project_name or "—",
                 "members": len(members), "tasks": sum(m["count"] for m in members),
                 "tone": tone_choice, "domain": domain_choice, "lang": lang_choice,
                 "data": data, "members_detail": members,
-                "saved_at": datetime.now().isoformat(),
+                "saved_at": _saved_at_now,
             })
             st.session_state.history = st.session_state.history[:MAX_HISTORY]
             save_history_to_disk(st.session_state.history)
@@ -3477,9 +5090,16 @@ Embed the project tag "{project_tag}" in the chat_update header and email subjec
                 "include_tomorrow": include_tomorrow, "include_blockers": include_blockers,
                 "prepared_by": your_name.strip(),
                 "run_tokens": total_tokens_used,
-                "action_items": extract_action_items(members),
+                "action_items": resolve_action_dates(extract_action_items(members), standup_date),
                 "followthrough": check_action_item_followthrough(members, [previous_entry] if previous_entry else []),
+                # ── ITERATION A/B additions: everything the output panel needs lives in stored state ──
+                "members": members, "saved_at": _saved_at_now, "base_date": standup_date.isoformat(),
+                "metrics": extract_metrics(members),
+                "dated": extract_dated_mentions(members, standup_date),
+                "template": _tpl, "blocker_meta": _blocker_meta, "project": project_name.strip(),
+                "audience": {}, "mask": bool(_scrub_found and st.session_state.get("scrub_mask", True)),
             }
+            st.session_state["last_output"]["versions"] = [_make_version_snapshot(st.session_state["last_output"], "Generated")]
 
 
         except json.JSONDecodeError:
@@ -3509,7 +5129,7 @@ if _lo and _lo.get("team_slug") != TEAM_SLUG:
     _lo = None
 if _lo:
     render_output(_lo)
-    if st.button("Clear output", key="sec_clear_output_btn"):
+    if st.button(T("clear_output"), key="sec_clear_output_btn"):
         st.session_state.pop("last_output", None)
         st.rerun()
 
@@ -3519,8 +5139,8 @@ if _lo:
 # ═══════════════════════════════════════════════════
 if st.session_state.history:
     st.markdown(
-        '<hr class="divider"><div class="section-head" style="margin-top:3rem;"><div class="eyebrow">History</div>'
-        '<h2>Past standups</h2><p>Every saved update, newest first \u2014 replay, filter and export.</p></div>',
+        f'<hr class="divider"><div class="section-head" style="margin-top:3rem;"><div class="eyebrow">{_html.escape(T("history"))}</div>'
+        f'<h2>{_html.escape(T("past_standups"))}</h2><p>Every saved update, newest first \u2014 replay, filter and export.</p></div>',
         unsafe_allow_html=True
     )
 
